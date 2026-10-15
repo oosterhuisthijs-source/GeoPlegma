@@ -11,3 +11,7 @@ own_data/*
 !own_data/*.py
 !own_data/*.columns.json
 !own_data/cbs_vk100_sample.geojson
+
+# Python bytecode
+__pycache__/
+*.pyc

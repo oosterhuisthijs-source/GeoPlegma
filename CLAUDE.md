@@ -11,8 +11,8 @@ counts, refinement levels) regardless of which underlying grid engine is doing t
 
 ## Workspace layout
 
-Workspace members (see root `Cargo.toml`): `geoplegma`, `gp-bindings/js`, `gp-encoding`, `gp-proj`,
-`viewer-3d/src-tauri`. `tests/`, `diagrams/`, and `docs/` are explicitly excluded from the workspace.
+Workspace members (see root `Cargo.toml`): `geoplegma`, `datacube-zh`, `gp-bindings/js`, `gp-encoding`,
+`gp-proj`, `viewer-3d/src-tauri`. `tests/`, `diagrams/`, and `docs/` are explicitly excluded from the workspace.
 
 - **`geoplegma`** — the core crate: the `DggrsApi` port trait, the adapter implementations for each
   backend, and the factory that dispatches between them. This is what everything else depends on.
@@ -30,6 +30,9 @@ Workspace members (see root `Cargo.toml`): `geoplegma`, `gp-bindings/js`, `gp-en
 - **`viewer-3d/src-tauri`** — Tauri desktop app (Cargo package name `visualization-app`) that reads
   `gp-encoding` output and renders it with deck.gl. Has its own JS/pnpm toolchain; excluded from
   workspace-wide `cargo clippy`/`cargo test` invocations in CI because of that.
+- **`datacube-zh`** — personal research crate (binary `datacube-zh`) plus Python prep scripts that rebuild
+  the Zuid-Holland / national H3 res-9 datacube from source data, with `geoplegma` doing all the hex work.
+  See its `README.md` and the `own_data/` section below.
 - **`gp-dggrs`** — an early-stage stub, **not a workspace member**. Its `Cargo.toml` currently depends
   on itself (`gp-dggrs = { path = "../gp-dggrs/" }`) and `api.rs` is unfinished. Treat as WIP/unwired;
   don't assume it builds.
@@ -157,10 +160,26 @@ deepest layers can't be enumerated. `to_zones` never populates `children` for He
 
 ## `own_data/` — CBS overlay reproduction & benchmarking (active investigation)
 
-**Status: nothing here is committed yet** (`own_data/`, `CLAUDE.md`, the new `geoplegma/example/own_data_*.rs`
-files, and the `geoplegma/Cargo.toml` dev-dependency additions are all untracked/modified — run `git status`
-before doing anything destructive). This is a personal research thread, not a repo feature; pick it back up
-by reading this section, not by re-deriving context.
+**Status: committed on branch `feature/own-data-cbs-overlay`** (the `geoplegma/example/own_data_*.rs`
+examples, the `own_data/` fetch scripts + column schemas + small sample, and the whole `datacube-zh` crate).
+The large fetched/derived data under `own_data/` stays local and gitignored (see `.gitignore`). This is a
+personal research thread, not an upstream repo feature; pick it back up by reading this section and
+`datacube-zh/README.md`, not by re-deriving context.
+
+### Current state: `datacube-zh` (the follow-up to everything below)
+
+The overlay work below grew into `datacube-zh`, which rebuilds the datacube from original sources with
+correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead of reverse-engineering
+`own_data`'s parquet. Done and audited:
+
+- Regions in `datacube-zh/config/regions.toml`: `zh` (37,818 hexes → `own_data/out/datacube_zh`) and `nl`
+  (468,688 hexes → `own_data/out_nl/datacube_nl`), both `year_int`-partitioned Delta tables for 2018-2025
+  (plus `.parquet` and `.columns.json` exports).
+- Layers: grid, CBS 100m squares, admin (gemeente/wijk/buurt), static rasters/vectors (AHN, LIWO, RIVM,
+  REV, Natura 2000, BRO), LGN stopgap (ZH only, 2018-2023), CBS NBBG land use, BRP crop groups, 3D BAG,
+  buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`).
+- Still null / not produced: BAG `num_*`, `soortenrijkdomsklasse` (source unknown), `heeft_kepler_data`,
+  median household income. Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
 
 ### What `own_data/` is
 
@@ -254,12 +273,12 @@ fixed):
 
 ### Plausible next steps (not started)
 
-- Draft the actual CBS `_sum` fix in `datacube` (add a `source_fraction` weight, wire it into
-  `aggregate_by_h3` for `sum`-type columns only) and verify it against the same 5 test hexes.
+- Fill the remaining null columns in `datacube-zh` (see "Current state" above).
+- Port the CBS `_sum` fix upstream into `datacube` (add a `source_fraction` weight, wire it into
+  `aggregate_by_h3` for `sum`-type columns only). `datacube-zh/src/overlay.rs` already implements the
+  correct weighting and can serve as the reference.
 - Time `lgn_integration_to_consumption.py` with/without the missing broadcast hint (via `just run-lgn` or a
   real Databricks run) to confirm the 20x-slower risk is real here too, not just plausible.
-- Decide what (if anything) from `own_data/` should be committed vs. `.gitignore`'d — it's currently several
-  hundred MB of fetched/derived data sitting untracked in the repo.
 - If continuing the Databricks-vs-geoplegma comparison: no real Databricks timing numbers exist yet, only
   reasoned expectations (see chat history) — getting an actual `cbs`/`lgn` job duration would make that
   comparison real instead of inferred.
