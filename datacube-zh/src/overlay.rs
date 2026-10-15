@@ -72,6 +72,92 @@ impl RTreeObject for Indexed {
     }
 }
 
+/// Polygons with more vertices than this are cut into pieces first: a single
+/// province-sized land-use polygon (NBBG has some with >1M vertices) would
+/// otherwise be intersected in full with every hex it touches.
+const MAX_PIECE_VERTICES: usize = 512;
+
+/// Recursively halve `mp` along the longer side of its bounding box until
+/// every piece has at most `MAX_PIECE_VERTICES` vertices (like PostGIS
+/// `ST_Subdivide`). The pieces tile the original exactly.
+fn subdivide(mp: MultiPolygon<f64>, depth: u32, out: &mut Vec<MultiPolygon<f64>>) {
+    use geo::CoordsIter;
+    if mp.0.is_empty() {
+        return;
+    }
+    if mp.coords_count() <= MAX_PIECE_VERTICES || depth >= 24 {
+        out.push(mp);
+        return;
+    }
+    let Some(r) = mp.bounding_rect() else { return };
+    let (min, max) = (r.min(), r.max());
+    let halves = if r.width() >= r.height() {
+        let mid = (min.x + max.x) / 2.0;
+        [geo::Rect::new(min, geo::coord! { x: mid, y: max.y }), geo::Rect::new(geo::coord! { x: mid, y: min.y }, max)]
+    } else {
+        let mid = (min.y + max.y) / 2.0;
+        [geo::Rect::new(min, geo::coord! { x: max.x, y: mid }), geo::Rect::new(geo::coord! { x: min.x, y: mid }, max)]
+    };
+    for half in halves {
+        subdivide(mp.intersection(&half.to_polygon()), depth + 1, out);
+    }
+}
+
+/// Source polygons cut into small pieces, each remembering the index of the
+/// polygon it came from, in an R-tree.
+struct PieceIndex {
+    pieces: Vec<MultiPolygon<f64>>,
+    owner: Vec<usize>,
+    tree: RTree<Indexed>,
+}
+
+impl PieceIndex {
+    fn build(geoms: &[MultiPolygon<f64>]) -> Self {
+        let split: Vec<(usize, Vec<MultiPolygon<f64>>)> = geoms
+            .par_iter()
+            .enumerate()
+            .map(|(i, g)| {
+                let mut out = Vec::new();
+                subdivide(g.clone().orient(Direction::Default), 0, &mut out);
+                (i, out)
+            })
+            .collect();
+        let (mut pieces, mut owner) = (Vec::new(), Vec::new());
+        for (i, ps) in split {
+            for p in ps {
+                owner.push(i);
+                pieces.push(p);
+            }
+        }
+        let tree = RTree::bulk_load(
+            pieces
+                .iter()
+                .enumerate()
+                .filter_map(|(index, g)| {
+                    let r = g.bounding_rect()?;
+                    Some(Indexed { index, env: AABB::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]) })
+                })
+                .collect(),
+        );
+        PieceIndex { pieces, owner, tree }
+    }
+
+    /// (owner polygon index, overlap m²) for every piece overlapping `hex`.
+    /// A polygon split into several pieces can appear more than once; the
+    /// overlaps of its pieces add up to the polygon's overlap.
+    fn hits(&self, hex: &Hex) -> Vec<(usize, f64)> {
+        let r = hex.polygon.bounding_rect().expect("hex has a bounding rect");
+        let query = AABB::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]);
+        self.tree
+            .locate_in_envelope_intersecting(query)
+            .filter_map(|item| {
+                let overlap = hex.polygon.intersection(&self.pieces[item.index]).geodesic_area_unsigned();
+                (overlap > 0.0).then_some((self.owner[item.index], overlap))
+            })
+            .collect()
+    }
+}
+
 /// Overlay `geoms` (+ attribute columns) onto `hexes`.
 ///
 /// `empty_sum_is_zero`: what a `Sum` column reports for a hex no source
@@ -85,18 +171,8 @@ pub fn overlay(
     strings: &[&[Option<String>]],
     empty_sum_is_zero: bool,
 ) -> OverlayResult {
-    let geoms: Vec<MultiPolygon<f64>> = geoms.par_iter().map(|g| g.clone().orient(Direction::Default)).collect();
-    let areas: Vec<f64> = geoms.par_iter().map(|g| g.geodesic_area_unsigned()).collect();
-    let tree = RTree::bulk_load(
-        geoms
-            .iter()
-            .enumerate()
-            .filter_map(|(index, g)| {
-                let r = g.bounding_rect()?;
-                Some(Indexed { index, env: AABB::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]) })
-            })
-            .collect(),
-    );
+    let areas: Vec<f64> = geoms.par_iter().map(|g| g.clone().orient(Direction::Default).geodesic_area_unsigned()).collect();
+    let index = PieceIndex::build(geoms);
 
     struct HexOut {
         numeric: Vec<Option<f64>>,
@@ -107,17 +183,12 @@ pub fn overlay(
     let per_hex: Vec<HexOut> = hexes
         .par_iter()
         .map(|hex| {
-            let r = hex.polygon.bounding_rect().expect("hex has a bounding rect");
-            let query = AABB::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]);
-
             // (source index, overlap m², overlap / source area)
-            let hits: Vec<(usize, f64, f64)> = tree
-                .locate_in_envelope_intersecting(query)
-                .filter_map(|item| {
-                    let overlap = hex.polygon.intersection(&geoms[item.index]).geodesic_area_unsigned();
-                    (overlap > 0.0 && areas[item.index] > 0.0)
-                        .then(|| (item.index, overlap, (overlap / areas[item.index]).min(1.0)))
-                })
+            let hits: Vec<(usize, f64, f64)> = index
+                .hits(hex)
+                .into_iter()
+                .filter(|&(i, _)| areas[i] > 0.0)
+                .map(|(i, overlap)| (i, overlap, (overlap / areas[i]).min(1.0)))
                 .collect();
             let covered: f64 = hits.iter().map(|h| h.1).sum();
 
@@ -183,4 +254,13 @@ pub fn overlay(
         result.coverage.push(h.coverage);
     }
     result
+}
+
+/// For every hex, the source polygons it overlaps and the overlap area (m²).
+/// The geometric core of `overlay`, exposed for callers that aggregate
+/// several attributes of the same polygons differently (e.g. NBBG, where one
+/// polygon carries both its 2020 and 2022 category).
+pub fn hex_overlaps(hexes: &[Hex], geoms: &[MultiPolygon<f64>]) -> Vec<Vec<(usize, f64)>> {
+    let index = PieceIndex::build(geoms);
+    hexes.par_iter().map(|hex| index.hits(hex)).collect()
 }

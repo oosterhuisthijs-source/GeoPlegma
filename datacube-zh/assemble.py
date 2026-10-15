@@ -97,6 +97,23 @@ def load_lgn(data: Path) -> pa.Table | None:
     return lgn
 
 
+# NBBG reference year used for each cube year (NBBG has peiljaren 2020 and 2022).
+BBG_YEAR_FOR = {2018: 2020, 2019: 2020, 2020: 2020, 2021: 2020, 2022: 2022, 2023: 2022}
+
+
+def load_bbg(work: Path) -> pa.Table | None:
+    """CBS Nieuw Bestand Bodemgebruik fractions per hex (datacube-zh bbg)."""
+    parts = []
+    for year, src in BBG_YEAR_FOR.items():
+        f = work / f"layers/bbg_{src}.parquet"
+        if not f.exists():
+            log(f"bbg: {f} missing, skipped")
+            return None
+        t = pq.read_table(f)
+        parts.append(t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64())))
+    return pa.concat_tables(parts)
+
+
 def build_real(work: Path) -> pa.Table:
     grid = pq.read_table(work / "grid.parquet")
     admin = pq.read_table(work / "layers/admin.parquet")
@@ -111,6 +128,9 @@ def build_real(work: Path) -> pa.Table:
     cbs_all = pa.concat_tables(years, promote_options="default")
 
     cube = left_join(cbs_all, base, "h3_id")
+    bbg = load_bbg(work)
+    if bbg is not None:
+        cube = left_join(cube, bbg, ["h3_id", "year_int"])
     lgn = load_lgn(work.parent)
     if lgn is not None:
         cube = left_join(cube, lgn, ["h3_id", "year_int"])
@@ -213,7 +233,15 @@ def build_manifest(real: pa.Table, config_dir: Path) -> dict:
     for name in real.column_names:
         col = real[name]
         src, unit, agg = info.get(name, (None, None, None))
-        if name.endswith("_fraction") and name != "province_fraction":
+        if name.startswith("bbg_"):
+            src = "CBS Nieuw Bestand Bodemgebruik, mutatiebestand NBBG2022 v1 (peiljaren 2020 en 2022)"
+            unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
+            agg = {
+                "bbg_source_year": "NBBG-peiljaar van de waarden (2018-2021 -> 2020, 2022-2023 -> 2022)",
+                "bbg_coverage": "som van alle bbg_*_fraction (1 = cel volledig gekarteerd)",
+                "bbg_dominant": "categorie met het grootste oppervlak in de cel",
+            }.get(name, "aandeel van het celoppervlak met deze bodemgebruikscategorie")
+        elif name.endswith("_fraction") and name != "province_fraction":
             src, unit, agg = ("LGN Landelijk Grondgebruik Nederland (STOPGAP: Databricks consumption export, H3 res 9)",
                               "0-1", "aandeel van de cel met deze landgebruiksklasse")
         valid = pc.is_valid(col)

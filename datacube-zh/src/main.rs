@@ -5,6 +5,7 @@
 //! work directory. Hex geometry always comes from geoplegma's H3 adapter.
 
 mod admin;
+mod bbg;
 mod cbs;
 mod geoparquet;
 mod grid;
@@ -47,6 +48,11 @@ enum Command {
     },
     /// Assign gemeente/wijk/buurt (CBS Wijk- en Buurtkaart) to each hex.
     Admin,
+    /// CBS Nieuw Bestand Bodemgebruik: per-hex land-use fractions (2020, 2022).
+    Bbg {
+        #[arg(long, default_value = "datacube-zh/config/bbg.toml")]
+        config: PathBuf,
+    },
     /// Aggregate the static raster/vector layers from config/static.toml.
     Static {
         #[arg(long, default_value = "datacube-zh/config/static.toml")]
@@ -84,6 +90,11 @@ fn main() -> Result<()> {
                 &work.join("wijkbuurt/wijken.parquet"),
                 &work.join("layers/admin.parquet"),
             )?;
+        }
+        Command::Bbg { config } => {
+            let config = bbg::BbgConfig::load(&config)?;
+            let hexes = grid::load_hexes(&grid_path)?;
+            bbg::run(&config, &hexes, &work.join("bbg/nbbg_undissolved.parquet"), &work.join("layers"))?;
         }
         Command::Static { config, only } => {
             let config = static_layers::StaticConfig::load(&config)?;

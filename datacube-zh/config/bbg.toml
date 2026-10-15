@@ -1,0 +1,59 @@
+# CBS Nieuw Bestand Bodemgebruik (NBBG), mutatiebestand NBBG2022 v1:
+# one polygon layer carrying both the 2020 (`NBBG20`) and the 2022 (`NBBG22`)
+# category, consistently corrected so the two years are comparable.
+#
+# Source: https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/
+#   CBS_Mutatiebestand_NBBG2022_v1_def_GPKG.zip (layer *_dissolved)
+#
+# Output per hex and per category: `bbg_<slug>_fraction` = share of the hex
+# area with that land use (all categories together sum to ~1 wherever the
+# hex is covered by the map; `bbg_coverage` holds that sum).
+#
+# Code -> label from the CBS QGIS style file (CBS_NBBG2022_stijlbestand_v1.qml).
+
+[years]
+NBBG20 = 2020
+NBBG22 = 2022
+
+[categories]
+10 = "Spoorterrein"
+11 = "Hoofdweg"
+12 = "Vliegveld"
+13 = "Metro en sneltram"
+20 = "Woonterrein"
+21 = "Detailhandel en horeca"
+22 = "Openbare voorziening"
+23 = "Sociaal-culturele voorziening"
+24 = "Bedrijfsterrein"
+30 = "Stortplaats"
+32 = "Begraafplaats"
+33 = "Delfstofwinplaats"
+34 = "Bouwterrein"
+35 = "Semi-verhard overig terrein"
+36 = "Zonnepark"
+40 = "Stedelijk groen"
+41 = "Sportterrein"
+42 = "Volkstuin"
+43 = "Dagrecreatief terrein"
+44 = "Verblijfsrecreatief terrein"
+50 = "Glastuinbouw"
+51 = "Overig agrarisch terrein"
+52 = "Akker en meerjarige teelt"
+53 = "Agrarisch grasland"
+60 = "Bos"
+61 = "Open droog natuurlijk terrein"
+62 = "Open nat natuurlijk terrein"
+70 = "IJsselmeer en Markermeer"
+71 = "Afgesloten zeearm"
+72 = "Rijn en Maas"
+73 = "Randmeer"
+74 = "Spaarbekken"
+75 = "Recreatief binnenwater"
+76 = "Binnenwater voor delfstofwinning"
+77 = "Vloei- en slibveld"
+78 = "Overig binnenwater"
+80 = "Waddenzee, Eems en Dollard"
+81 = "Oosterschelde"
+82 = "Westerschelde"
+83 = "Noordzee"
+90 = "Buitenland"

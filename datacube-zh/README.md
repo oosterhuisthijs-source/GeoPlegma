@@ -45,6 +45,16 @@ datacube-zh/prepare/wijkbuurt.sh own_data
 datacube-zh/prepare/static.py --data own_data       # WCS/WFS/GeoPackage fetch, ~10 min
 ./target/release/datacube-zh static                # -> work/layers/static.parquet (~2 min)
 
+# 4b. CBS Nieuw Bestand Bodemgebruik (NBBG2022 mutatiebestand, 2.2 GB zip)
+mkdir -p own_data/sources/bbg own_data/work/bbg && cd own_data/sources/bbg && \
+  curl -sSfLO https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/CBS_Mutatiebestand_NBBG2022_v1_def_GPKG.zip && \
+  unzip -q CBS_Mutatiebestand_NBBG2022_v1_def_GPKG.zip && cd -
+ogr2ogr -f Parquet own_data/work/bbg/nbbg_undissolved.parquet \
+  own_data/sources/bbg/CBS_Mutatiebestand_NBBG2022_v1_def_GPKG/CBS_Mutatiebestand_NBBG2022_v1_def.gpkg \
+  CBS_Mutatiebestand_NBBG2022_v1_def_undissolved -spat 3.76 51.63 5.05 52.35 -spat_srs EPSG:4326 \
+  -t_srs OGC:CRS84 -dim XY -nlt MULTIPOLYGON -lco GEOMETRY_ENCODING=WKB -lco COMPRESSION=ZSTD
+./target/release/datacube-zh bbg                   # -> work/layers/bbg_2020.parquet, bbg_2022.parquet (~5 s)
+
 # 5. assemble -> out/datacube_zh (real values, Delta + parquet)
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
 uv run datacube-zh/assemble.py
@@ -59,6 +69,7 @@ uv run datacube-zh/assemble.py
 | 3 | LGN `_fraction` (yearly) | **stopgap**: Databricks `lgn<year>_pzh_vectorized_consumption` export (`own_data/sources/lgn/`), 2018-2022, 2023 = copy of 2022. Raw rasters wanted (lgn.nl has no direct links, 4TU copies embargoed) | imported as-is in `assemble.py`; raw route would be raster engine with class counts | stopgap |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
+| 5b | NBBG land use (41 categories, peiljaren 2020 + 2022) | [CBS NBBG2022 mutatiebestand](https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/) | `hex_overlaps` once, then overlap per category for both years; `config/bbg.toml` | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -171,3 +182,26 @@ consumption tables, already on H3 res 9):
 
 `out/datacube_zh.columns.json` is a per-column manifest: source, unit,
 aggregation, type, warning and non-null share per year.
+
+## NBBG land use (`datacube-zh bbg`)
+
+- Source: CBS Nieuw Bestand Bodemgebruik, *mutatiebestand* NBBG2022 v1,
+  `_undissolved` layer: every polygon carries both its 2020 (`NBBG20`) and
+  2022 (`NBBG22`) category, corrected to be comparable (CBS recommends the
+  mutatiebestand for comparisons over time).
+- Output: `bbg_<category>_fraction` (41 categories, real 0-1 shares),
+  `bbg_coverage` (sum, = 1.000 for every hex: NBBG maps water and sea too),
+  `bbg_dominant`, `bbg_source_year`. Cube years 2018-2021 use 2020,
+  2022-2023 use 2022.
+- One geometric pass serves both years (`overlay::hex_overlaps`); ~5 s.
+- The overlay engine now cuts polygons with > 512 vertices into pieces first
+  (`subdivide`, like PostGIS `ST_Subdivide`). Some NBBG polygons have >1M
+  vertices; without this the run took >10 min. Results for other layers are
+  unchanged (CBS output verified bit-identical).
+- vs. SimCityZH `bodemgebruik.bin` (aggregated to the game's 750 m hexes):
+  province means match closely for nearly all classes (woonterrein
+  0.112/0.113, bedrijfsterrein 0.052/0.051, glastuinbouw 0.018/0.018),
+  per-hex r 0.6-0.97. The game has two classes the final NBBG2022 v1 lacks
+  (Natuurlijk grasland 4.2%, Kustduinen 1.8%), so it was built on a
+  pre-release NBBG version; that area shows up here in Overig agrarisch
+  terrein and Open droog/nat natuurlijk terrein.
