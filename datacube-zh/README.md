@@ -36,6 +36,10 @@ curl -sSfL "https://api.pdok.nl/kadaster/bestuurlijkegebieden/ogc/v1/collections
 # 2. CBS 100m squares 2018-2023
 datacube-zh/prepare/cbs.sh own_data                 # download + clip/reproject to GeoParquet
 ./target/release/datacube-zh cbs                   # -> work/layers/cbs_<year>.parquet
+
+# 3. gemeente/wijk/buurt (CBS Wijk- en Buurtkaart 2024)
+datacube-zh/prepare/wijkbuurt.sh own_data
+./target/release/datacube-zh admin                 # -> work/layers/admin.parquet
 ```
 
 ## Layers
@@ -44,8 +48,8 @@ datacube-zh/prepare/cbs.sh own_data                 # download + clip/reproject 
 |---|---|---|---|---|
 | 1 | grid | PDOK provinciegebied | geoplegma `zones_from_bbox` + polygon filter | done |
 | 2 | CBS (~135 cols, yearly) | [CBS vierkantstatistieken 100m](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/kaart-van-100-meter-bij-100-meter-met-statistieken) | polygon overlay, `config/cbs.toml` | done |
-| 3 | LGN `_fraction` (yearly) | LGN 25m rasters (to be supplied) | raster cell centres -> `zone_from_point`, class counts | todo |
-| 4 | gemeente/wijk/buurt codes + names | CBS wijk- en buurtkaart | hex centre point-in-polygon | todo |
+| 3 | LGN `_fraction` (yearly) | LGN rasters (to be supplied: lgn.nl has no direct download links, 4TU copies are embargoed) | raster cell centres -> `zone_from_point`, class counts | todo |
+| 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers: groundheight (AHN), flooddepth_1..5, bodem (BRO), BAG functions, risk areas, geluid, hitte, waterberging, lichtemissie, Natura2000, groen/soortenrijkdom | AHN / Klimaateffectatlas / PDOK / RIVM | raster sampling or polygon lookup | todo, sources to verify |
 | 6 | assemble + optional 0-255 export (+ Delta) | — | join on `h3_id`, `year_int` | todo |
 
@@ -61,3 +65,18 @@ datacube-zh/prepare/cbs.sh own_data                 # download + clip/reproject 
 - New vs. original: distance/count columns exist for 2022-2023 too, and
   `mediaan_inkomen_huishouden` (categorical, 2018-2019 only) is kept as an
   area-weighted mode instead of being lost as 0.
+
+## Validation (admin)
+
+- Vintage: all 2,290 buurtcodes in the original table exist in the 2024 map
+  (2023 lacks 34 re-divided Nieuwkoop buurten), so 2024 v2 is used.
+- Agreement with the original (37,614 shared hexes): buurtcode 87%,
+  gemeentecode 91%. The disagreements are errors in the original: ~2,900
+  hexes fully inside the province (Goeree-Overflakkee, Hoeksche Waard, ...)
+  were assigned Rotterdam (GM0599), median ~12 km from that buurt. Our
+  assignment matches the buurt containing the hex centre in 96% of those
+  cases (the original's in 1%).
+- Border hexes get whatever buurt covers most of them, which can be in a
+  neighbouring province (~350 hexes); filter on `province_fraction` or
+  gemeentecode if needed. The original also had null buurt/wijk names
+  (~1k hexes); ours has none.

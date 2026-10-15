@@ -4,6 +4,7 @@
 //! Parquet file keyed by `h3_id` (+ `year_int` for yearly layers) under the
 //! work directory. Hex geometry always comes from geoplegma's H3 adapter.
 
+mod admin;
 mod cbs;
 mod geoparquet;
 mod grid;
@@ -42,6 +43,8 @@ enum Command {
         #[arg(long, default_value = "datacube-zh/config/cbs.toml")]
         config: PathBuf,
     },
+    /// Assign gemeente/wijk/buurt (CBS Wijk- en Buurtkaart) to each hex.
+    Admin,
 }
 
 fn main() -> Result<()> {
@@ -62,6 +65,15 @@ fn main() -> Result<()> {
                 let out = work.join(format!("layers/cbs_{year}.parquet"));
                 cbs::run(&config, &hexes, &input, year, &out)?;
             }
+        }
+        Command::Admin => {
+            let hexes = grid::load_hexes(&grid_path)?;
+            admin::run(
+                &hexes,
+                &work.join("wijkbuurt/buurten.parquet"),
+                &work.join("wijkbuurt/wijken.parquet"),
+                &work.join("layers/admin.parquet"),
+            )?;
         }
     }
     Ok(())
