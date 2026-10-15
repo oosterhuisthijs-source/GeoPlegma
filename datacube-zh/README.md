@@ -44,6 +44,10 @@ datacube-zh/prepare/wijkbuurt.sh own_data
 # 4. static layers (AHN, LIWO, RIVM, REV, Natura 2000, BRO), see config/static.toml
 datacube-zh/prepare/static.py --data own_data       # WCS/WFS/GeoPackage fetch, ~10 min
 ./target/release/datacube-zh static                # -> work/layers/static.parquet (~2 min)
+
+# 5. assemble -> out/datacube_zh (real values, Delta + parquet)
+#             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
+uv run datacube-zh/assemble.py
 ```
 
 ## Layers
@@ -55,7 +59,7 @@ datacube-zh/prepare/static.py --data own_data       # WCS/WFS/GeoPackage fetch, 
 | 3 | LGN `_fraction` (yearly) | LGN rasters (to be supplied: lgn.nl has no direct download links, 4TU copies are embargoed) | raster cell centres -> `zone_from_point`, class counts | todo |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
-| 6 | assemble + optional 0-255 export (+ Delta) | — | join on `h3_id`, `year_int` | todo |
+| 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
 
@@ -117,3 +121,32 @@ Notes:
   source found), `landgebruiksklasse` (comes with LGN), `heeft_kepler_data`.
   The year-independent `aantal_inwoners` (~CBS 2020/2021 totals) will be
   filled from the CBS layer at assembly.
+
+## Outputs (`assemble.py`)
+
+- `out/datacube_zh/` (+ `datacube_zh.parquet`): 226,908 rows (37,818 hexes x
+  2018-2023), 169 columns, real values. Includes columns the original lacks:
+  `province_fraction`, `lat`/`lon`, `hex_area_m2`, `cbs_coverage`,
+  `mediaan_inkomen_huishouden_mode`, `natura2000_naam`.
+- `out/volledige_tijdreeks_delta/`: same 232 columns, order and types as the
+  ruimtelijke-assistent table (verified via DuckDB `delta_scan`), so it can
+  replace `src/backend/data/volledige_tijdreeks_delta` as-is.
+  - CBS `_sum/_area_weighted_average/_min/_max` columns are min-max scaled to
+    0-255 int16 over all years combined. (That is what the original did; its
+    `_llm_metadata.json` says "per jaar", which is wrong: each column hits 255
+    in only one year.)
+  - `year`, `year_label`, `year_date`, `year_ms` are filled correctly (were
+    mostly 0 in the original).
+  - `aantal_inwoners` = real CBS population of that row's year (original:
+    one static snapshot); `heeft_atlas_data` = hex has ANK heat-island data.
+  - Not yet produced, left null: LGN `_fraction` + `landgebruiksklasse`,
+    BAG `num_*`, `soortenrijkdomsklasse`, `heeft_kepler_data`,
+    `mediaan_inkomen_huishouden_area_weighted_average` (was all-0 anyway).
+  - Validation: median per-year Spearman vs the original 0.987 over 146
+    shared columns. Pooled over all years it looks lower (0.60) only because
+    the original has zeros for years it was missing (e.g. distances only in
+    2021) where this table has real data.
+- Differences in meaning the app's `_llm_metadata.json` should pick up:
+  distance/count columns now exist for 2018-2023; `natura2000_id` uses
+  official Natura 2000 site numbers; nulls where there's no data (instead of
+  0); the hex set is 37,818 (204 more border slivers).
