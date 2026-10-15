@@ -4,17 +4,21 @@
 # ///
 """Step 6: join the per-layer outputs into the final datacube.
 
-Writes two Delta tables under <data>/out/:
+Writes, under the region's out directory (config/regions.toml):
 
-- datacube_zh/                 real values, one row per (h3_id, year_int),
-                               every rebuilt column (the actual product)
-- volledige_tijdreeks_delta/   drop-in replacement for ruimtelijke-assistent:
+- datacube_<region>/           Delta table partitioned by year_int: real
+                               values, one row per (h3_id, year_int), every
+                               rebuilt column (the actual product). Built one
+                               year at a time, so the national table never
+                               has to fit in memory.
+- datacube_<region>.columns.json   per-column manifest
+- volledige_tijdreeks_delta/   (zh only) drop-in replacement for ruimtelijke-assistent:
                                the original's exact columns, order and types,
                                CBS columns min-max scaled to 0-255 over all years
                                combined (as the original was), columns this
                                pipeline doesn't produce yet left null
 
-Usage: uv run datacube-zh/assemble.py [--data own_data] [--original PATH]
+Usage: uv run datacube-zh/assemble.py [--data own_data] [--region zh] [--original PATH]
 """
 import argparse
 import glob
@@ -102,55 +106,33 @@ def load_lgn(data: Path) -> pa.Table | None:
 BBG_YEAR_FOR = {2018: 2020, 2019: 2020, 2020: 2020, 2021: 2020, 2022: 2022, 2023: 2022}
 
 
-def load_brp(work: Path) -> pa.Table | None:
-    """BRP crop-group fractions per hex and year (datacube-zh brp)."""
-    files = [work / f"layers/brp_{y}.parquet" for y in YEARS]
-    if not all(f.exists() for f in files):
-        log("brp: layer files missing, skipped")
+def load_brp(work: Path, year: int) -> pa.Table | None:
+    """BRP crop-group fractions per hex for one year (datacube-zh brp)."""
+    f = work / f"layers/brp_{year}.parquet"
+    return pq.read_table(f) if f.exists() else None
+
+
+def load_bbg(work: Path, year: int) -> pa.Table | None:
+    """CBS Nieuw Bestand Bodemgebruik fractions per hex (datacube-zh bbg),
+    from the NBBG peiljaar used for `year`."""
+    f = work / f"layers/bbg_{BBG_YEAR_FOR[year]}.parquet"
+    if not f.exists():
         return None
-    return pa.concat_tables([pq.read_table(f) for f in files])
+    t = pq.read_table(f)
+    return t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64()))
 
 
-def load_bbg(work: Path) -> pa.Table | None:
-    """CBS Nieuw Bestand Bodemgebruik fractions per hex (datacube-zh bbg)."""
-    parts = []
-    for year, src in BBG_YEAR_FOR.items():
-        f = work / f"layers/bbg_{src}.parquet"
-        if not f.exists():
-            log(f"bbg: {f} missing, skipped")
-            return None
-        t = pq.read_table(f)
-        parts.append(t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64())))
-    return pa.concat_tables(parts)
-
-
-def build_real(work: Path) -> pa.Table:
-    grid = pq.read_table(work / "grid.parquet")
-    admin = pq.read_table(work / "layers/admin.parquet")
-    static = pq.read_table(work / "layers/static.parquet")
-    base = left_join(left_join(grid, admin, "h3_id"), static, "h3_id")
-
-    years = []
-    for y in YEARS:
-        cbs = pq.read_table(work / f"layers/cbs_{y}.parquet")
-        years.append(cbs)
-    # Columns can differ per year only by nulls (same config), but be safe.
-    cbs_all = pa.concat_tables(years, promote_options="default")
-
-    cube = left_join(cbs_all, base, "h3_id")
-    brp = load_brp(work)
-    if brp is not None:
-        cube = left_join(cube, brp, ["h3_id", "year_int"])
-    bbg = load_bbg(work)
-    if bbg is not None:
-        cube = left_join(cube, bbg, ["h3_id", "year_int"])
-    lgn = load_lgn(work.parent)
+def build_year(work: Path, year: int, base: pa.Table, lgn: pa.Table | None) -> pa.Table:
+    """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG (+ LGN)."""
+    cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
+    for layer in (load_brp(work, year), load_bbg(work, year)):
+        if layer is not None:
+            cube = left_join(cube, layer, ["h3_id", "year_int"])
     if lgn is not None:
-        cube = left_join(cube, lgn, ["h3_id", "year_int"])
-    # Leading key columns first, then everything else in layer order.
+        cube = left_join(cube, lgn.filter(pc.equal(lgn["year_int"], year)), ["h3_id", "year_int"])
     lead = ["h3_id", "year_int"]
     cube = cube.select(lead + [c for c in cube.column_names if c not in lead])
-    return cube.sort_by([("year_int", "ascending"), ("h3_id", "ascending")])
+    return cube.sort_by([("h3_id", "ascending")])
 
 
 def scale_0_255(col: pa.ChunkedArray) -> pa.ChunkedArray:
@@ -198,7 +180,13 @@ def build_compat(real: pa.Table, original_schema: pa.Schema) -> pa.Table:
     return pa.Table.from_arrays(cols, schema=pa.schema([f.remove_metadata() for f in original_schema]))
 
 
-def build_manifest(real: pa.Table, config_dir: Path) -> dict:
+def valid_shares(table: pa.Table) -> dict:
+    """Column -> share of non-null values in `table`."""
+    n = max(table.num_rows, 1)
+    return {c: round(1 - table[c].null_count / n, 4) for c in table.column_names}
+
+
+def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -> dict:
     """Per-column source/aggregation/coverage, for downstream docs (e.g. the
     SimCityZH explanation page)."""
     cbs = tomllib.loads((config_dir / "cbs.toml").read_text())
@@ -241,10 +229,9 @@ def build_manifest(real: pa.Table, config_dir: Path) -> dict:
         if layer.get("label"):
             info[layer["label"]] = (src, None, how)
 
-    years = real["year_int"]
     manifest = {}
-    for name in real.column_names:
-        col = real[name]
+    for field in schema:
+        name = field.name
         src, unit, agg = info.get(name, (None, None, None))
         if name.startswith("brp_"):
             src = "BRP gewaspercelen (RVO via PDOK), definitief, per jaar; gewascode -> gewasgroep in config/brp_groups.toml"
@@ -264,12 +251,8 @@ def build_manifest(real: pa.Table, config_dir: Path) -> dict:
         elif name.endswith("_fraction") and name != "province_fraction":
             src, unit, agg = ("LGN Landelijk Grondgebruik Nederland (STOPGAP: Databricks consumption export, H3 res 9)",
                               "0-1", "aandeel van de cel met deze landgebruiksklasse")
-        valid = pc.is_valid(col)
-        per_year = {}
-        for y in sorted(set(years.to_pylist())):
-            m = pc.equal(years, y)
-            per_year[y] = round(pc.sum(pc.and_(valid, m)).as_py() / max(pc.sum(m).as_py(), 1), 4)
-        entry = {"source": src, "unit": unit, "aggregation": agg, "type": str(col.type), "non_null_share_per_year": per_year}
+        per_year = {y: shares.get(name) for y, shares in shares_per_year.items()}
+        entry = {"source": src, "unit": unit, "aggregation": agg, "type": str(field.type), "non_null_share_per_year": per_year}
         if name in LGN_SUSPECT_2022:
             entry["warning"] = "2022 (en 2023) waarden te laag: LGN2022-codes niet gemapt in de Databricks-export"
         manifest[name] = entry
@@ -286,22 +269,47 @@ def write_delta(table: pa.Table, path: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="own_data")
-    ap.add_argument("--original", default=DEFAULT_ORIGINAL, help="original Delta table (for the compat schema)")
+    ap.add_argument("--region", default="zh")
+    ap.add_argument("--original", default=DEFAULT_ORIGINAL, help="original Delta table (for the zh compat schema)")
     args = ap.parse_args()
-    work = Path(args.data) / "work"
-    out = Path(args.data) / "out"
+    reg = tomllib.loads((Path(__file__).parent / "config/regions.toml").read_text())[args.region]
+    data = Path(args.data)
+    work, out = data / reg["work"], data / reg["out"]
     out.mkdir(parents=True, exist_ok=True)
+    name = f"datacube_{args.region}"
 
-    real = build_real(work)
-    write_delta(real, out / "datacube_zh")
-    pq.write_table(real, out / "datacube_zh.parquet", compression="zstd")
-    manifest = build_manifest(real, Path(__file__).parent / "config")
-    (out / "datacube_zh.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
-    log(f"wrote {out / 'datacube_zh.columns.json'} ({len(manifest)} columns)")
+    grid = pq.read_table(work / "grid.parquet")
+    base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
+                     pq.read_table(work / "layers/static.parquet"), "h3_id")
+    # The LGN stopgap export only exists for Zuid-Holland.
+    lgn = load_lgn(data) if args.region == "zh" else None
 
-    original_schema = pq.read_schema(glob.glob(f"{args.original}/*.parquet")[0])
-    compat = build_compat(real, original_schema)
-    write_delta(compat, out / "volledige_tijdreeks_delta")
+    delta_path = out / name
+    if delta_path.exists():
+        shutil.rmtree(delta_path)
+    schema, shares, writer = None, {}, None
+    for year in YEARS:
+        t = build_year(work, year, base, lgn)
+        if schema is None:
+            schema = t.schema
+            writer = pq.ParquetWriter(out / f"{name}.parquet", schema, compression="zstd")
+        t = t.select(schema.names).cast(schema)
+        write_deltalake(str(delta_path), t, mode="append", partition_by=["year_int"])
+        writer.write_table(t)
+        shares[year] = valid_shares(t)
+        log(f"{year}: {t.num_rows} rows x {t.num_columns} cols")
+        del t
+    writer.close()
+    log(f"wrote {delta_path} (partitioned by year_int) and {out / f'{name}.parquet'}")
+
+    manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
+    (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+    log(f"wrote {out / f'{name}.columns.json'} ({len(manifest)} columns)")
+
+    if args.region == "zh":
+        real = pq.read_table(out / f"{name}.parquet")
+        original_schema = pq.read_schema(glob.glob(f"{args.original}/*.parquet")[0])
+        write_delta(build_compat(real, original_schema), out / "volledige_tijdreeks_delta")
 
 
 if __name__ == "__main__":

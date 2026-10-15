@@ -11,7 +11,7 @@ as GeoParquet in OGC:CRS84, one file per source layer (`<name>__<i>.parquet`).
 
 Only needs the Python standard library and the GDAL command-line tools.
 
-Usage: datacube-zh/prepare/static.py [--data own_data] [--only name1,name2]
+Usage: datacube-zh/prepare/static.py [--data own_data] [--region zh] [--only name1,name2]
 """
 import argparse
 import math
@@ -25,9 +25,13 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-# Zuid-Holland in EPSG:28992 with ~1 km margin (the hex grid sticks out a
-# little past the province boundary).
-BBOX_RD = (42000, 405000, 132500, 485000)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import region as regions  # noqa: E402
+
+# Region bbox in EPSG:28992 and minimum raster resolution: set from
+# config/regions.toml in main().
+BBOX_RD = None
+MIN_RES = 0
 MAX_TILE_PX = 4000
 LAT = 52.0  # for metres -> degrees when picking the lon/lat output resolution
 
@@ -72,7 +76,7 @@ def prepare_raster(layer, src_dir, out_dir):
         log(f"skip {name} (exists)")
         return
     axes, native = describe(layer["wcs"], layer["coverage"])
-    res = layer.get("resolution", native)
+    res = max(layer.get("resolution", native), MIN_RES, native)
     scale = native / res
     tile_m = MAX_TILE_PX * res
     xmin, ymin, xmax, ymax = BBOX_RD
@@ -140,12 +144,20 @@ def main():
     ap.add_argument("--data", default="own_data")
     ap.add_argument("--config", default="datacube-zh/config/static.toml")
     ap.add_argument("--only", default="")
+    ap.add_argument("--region", default="zh")
     args = ap.parse_args()
 
+    global BBOX_RD, MIN_RES
+    reg = regions.load(args.region)
+    BBOX_RD = tuple(reg["bbox_rd"])
+    MIN_RES = reg.get("raster_min_resolution", 0)
     cfg = tomllib.loads(Path(args.config).read_text())
     only = set(filter(None, args.only.split(",")))
+    # Downloaded GeoPackages are shared; WCS tiles depend on bbox/resolution,
+    # so they are cached per region (zh keeps the original location).
     src_dir = Path(args.data) / "sources/static"
-    out_dir = Path(args.data) / "work/static"
+    tile_dir = src_dir if args.region == "zh" else src_dir / args.region
+    out_dir = Path(args.data) / reg["work"] / "static"
     src_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -156,7 +168,7 @@ def main():
     def go(job):
         f, layer = job
         try:
-            f(layer, src_dir, out_dir)
+            f(layer, tile_dir if f is prepare_raster else src_dir, out_dir)
         except Exception as e:
             failed.append(layer["name"])
             log(f"FAILED {layer['name']}: {e}")

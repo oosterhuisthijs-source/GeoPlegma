@@ -11,17 +11,19 @@
 # the Rust side (see config/cbs.toml), so this step stays a dumb format
 # conversion.
 #
-# Usage: datacube-zh/prepare/cbs.sh [DATA_DIR]   (default: own_data)
+# Usage: datacube-zh/prepare/cbs.sh [DATA_DIR] [REGION]   (defaults: own_data zh)
 set -euo pipefail
 
 DATA_DIR="${1:-own_data}"
+REGION="${2:-zh}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$DATA_DIR/sources/cbs"
-OUT="$DATA_DIR/work/cbs"
+OUT="$DATA_DIR/$("$HERE/region.py" "$REGION" work)/cbs"
 mkdir -p "$SRC" "$OUT"
 
-# Zuid-Holland bbox (lon/lat) with a small margin; the exact province clip
-# happens later against the H3 grid.
-BBOX="3.76 51.63 5.05 52.35"
+# Region bbox (lon/lat, config/regions.toml) with a small margin; the exact
+# clip happens later against the H3 grid.
+BBOX="$("$HERE/region.py" "$REGION" bbox_wgs84)"
 
 declare -A URLS=(
   [2018]="https://www.cbs.nl/-/media/cbs/dossiers/nederland-regionaal/vierkanten/100/2021-cbs_vk100_2018_v3.zip"

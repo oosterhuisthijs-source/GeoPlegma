@@ -1,0 +1,33 @@
+# Regions the datacube can be built for. Every step takes `--region <key>`
+# (default "zh"). Raw downloads (<data>/sources) are shared; prepared inputs
+# and outputs live in a per-region work/out directory.
+#
+#   province_codes  PDOK provinciegebied codes forming the region; [] = all
+#                   provinces (the whole country, incl. its inland and
+#                   coastal waters as far as the provinces cover them)
+#   bbox_wgs84      clip box for downloads/prepare steps (lon/lat), with margin
+#   bbox_rd         the same box in EPSG:28992 (for WCS/WFS/GeoPackage clips)
+#   work, out       directories under <data>
+#   raster_min_resolution  rasters are fetched at no finer than this (m);
+#                   0 = use each layer's own `resolution`/native resolution
+#   reference       validation reference for `aantal_inwoners_sum`
+
+[zh]
+name = "Zuid-Holland"
+province_codes = ["28"]
+bbox_wgs84 = [3.76, 51.63, 5.05, 52.35]
+bbox_rd = [42000, 405000, 132500, 485000]
+work = "work"
+out = "out"
+raster_min_resolution = 0
+
+[nl]
+name = "Nederland"
+province_codes = []
+bbox_wgs84 = [3.2, 50.7, 7.3, 53.7]
+bbox_rd = [0, 300000, 300000, 625000]
+work = "work_nl"
+out = "out_nl"
+# ~4,000 pixels per hex at 5 m is overkill nationally (AHN alone would be
+# ~4 billion pixels); 25 m still gives ~170 pixels per res-9 hex.
+raster_min_resolution = 25

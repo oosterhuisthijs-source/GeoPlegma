@@ -1,8 +1,11 @@
-//! Rebuild the Zuid-Holland H3 datacube from source data, one layer at a time.
+//! Rebuild the H3 datacube (Zuid-Holland, or any region in
+//! config/regions.toml, e.g. the whole Netherlands) from source data, one
+//! layer at a time.
 //!
 //! Each subcommand reads prepared source files (see `prepare/`) and writes one
 //! Parquet file keyed by `h3_id` (+ `year_int` for yearly layers) under the
-//! work directory. Hex geometry always comes from geoplegma's H3 adapter.
+//! region's work directory. Hex geometry always comes from geoplegma's H3
+//! adapter.
 
 mod admin;
 mod bbg;
@@ -14,9 +17,10 @@ mod overlay;
 mod raster;
 mod static_layers;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -25,20 +29,22 @@ struct Cli {
     /// Root data directory (holds `sources/` and `work/`).
     #[arg(long, global = true, default_value = "own_data")]
     data: PathBuf,
+    /// Region key from config/regions.toml (zh = Zuid-Holland, nl = Nederland).
+    #[arg(long, global = true, default_value = "zh")]
+    region: String,
+    #[arg(long, global = true, default_value = "datacube-zh/config/regions.toml")]
+    regions: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Build the base H3 grid: every cell overlapping the province.
+    /// Build the base H3 grid: every cell overlapping the region.
     Grid {
         /// PDOK `provinciegebied` GeoJSON.
         #[arg(long)]
         boundary: Option<PathBuf>,
-        /// Province code (28 = Zuid-Holland).
-        #[arg(long, default_value = "28")]
-        code: String,
     },
     /// Aggregate CBS 100m squares onto the grid, per year.
     Cbs {
@@ -71,15 +77,30 @@ enum Command {
     },
 }
 
+/// One entry of config/regions.toml (only what the Rust side needs).
+#[derive(serde::Deserialize)]
+struct Region {
+    name: String,
+    province_codes: Vec<String>,
+    work: String,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let work = cli.data.join("work");
+    let regions: BTreeMap<String, Region> = toml::from_str(
+        &std::fs::read_to_string(&cli.regions).with_context(|| format!("reading {}", cli.regions.display()))?,
+    )?;
+    let region = regions
+        .get(&cli.region)
+        .ok_or_else(|| anyhow!("unknown region {} (known: {:?})", cli.region, regions.keys().collect::<Vec<_>>()))?;
+    let work = cli.data.join(&region.work);
     let grid_path = work.join("grid.parquet");
+    eprintln!("region {} ({}) -> {}", cli.region, region.name, work.display());
 
     match cli.command {
-        Command::Grid { boundary, code } => {
+        Command::Grid { boundary } => {
             let boundary = boundary.unwrap_or_else(|| cli.data.join("sources/bestuurlijk/provincies.json"));
-            grid::build(&boundary, &code, &grid_path)?;
+            grid::build(&boundary, &region.province_codes, &grid_path)?;
         }
         Command::Cbs { years, config } => {
             let config = cbs::CbsConfig::load(&config)?;

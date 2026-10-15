@@ -7,13 +7,15 @@
 # 2024 is the vintage the original ruimtelijke-assistent table used (all its
 # buurtcodes match 2024; 2023 lacks Nieuwkoop's re-divided buurten).
 #
-# Usage: datacube-zh/prepare/wijkbuurt.sh [DATA_DIR]   (default: own_data)
+# Usage: datacube-zh/prepare/wijkbuurt.sh [DATA_DIR] [REGION]   (defaults: own_data zh)
 set -euo pipefail
 
 DATA_DIR="${1:-own_data}"
+REGION="${2:-zh}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="2024_v2"
 SRC="$DATA_DIR/sources/wijkbuurt"
-OUT="$DATA_DIR/work/wijkbuurt"
+OUT="$DATA_DIR/$("$HERE/region.py" "$REGION" work)/wijkbuurt"
 mkdir -p "$SRC" "$OUT"
 
 GPKG="$SRC/WijkBuurtkaart_$VERSION/wijkenbuurten_$VERSION.gpkg"
@@ -23,7 +25,7 @@ if [ ! -f "$GPKG" ]; then
   unzip -o -q "$zip" -d "$SRC"
 fi
 
-BBOX="3.76 51.63 5.05 52.35"
+BBOX="$("$HERE/region.py" "$REGION" bbox_wgs84)"
 ogr2ogr -f Parquet "$OUT/buurten.parquet" "$GPKG" buurten -overwrite \
   -select buurtcode,buurtnaam,wijkcode,gemeentecode,gemeentenaam,water \
   -spat $BBOX -spat_srs EPSG:4326 -t_srs OGC:CRS84 \
