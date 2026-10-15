@@ -43,10 +43,57 @@ pub fn run(config: &BrpConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
         .collect();
     let unmapped = codes.iter().flatten().filter(|c| !group_of_code.contains_key(&(**c as i64))).count();
 
+    // Exact duplicate parcels (same crop, same geometry; ~100 nationally in
+    // 2023) would be counted twice.
+    let mut seen = std::collections::HashSet::new();
+    let keep: Vec<bool> = table
+        .geometries
+        .iter()
+        .zip(codes)
+        .map(|(g, c)| {
+            let r = geo::BoundingRect::bounding_rect(g);
+            let key = (
+                c.map(|c| c as i64),
+                r.map(|r| [r.min().x, r.min().y, r.max().x, r.max().y].map(|v| (v * 1e7).round() as i64)),
+                geo::CoordsIter::coords_count(g),
+            );
+            seen.insert(key)
+        })
+        .collect();
+    let duplicates = keep.iter().filter(|k| !**k).count();
+
     let overlaps = hex_overlaps(hexes, &table.geometries);
-    let (fractions, coverage) = class_fractions(hexes, &overlaps, groups.len(), |i| {
+    let (mut fractions, _) = class_fractions(hexes, &overlaps, groups.len(), |i| {
+        if !keep[i] {
+            return None;
+        }
         group_of_code.get(&(codes[i]? as i64)).copied()
     });
+    // Overlapping registrations (e.g. a "Natuurterrein" parcel registered on
+    // top of grassland parcels) can push a hex above 100%: trim the generic
+    // nature registration first, then scale proportionally if still > 1.
+    let natuur = groups.iter().position(|(k, _)| k.as_str() == "natuur");
+    let mut trimmed = 0;
+    for h in 0..hexes.len() {
+        let total: f64 = fractions.iter().map(|f| f[h]).sum();
+        if total <= 1.0 + 1e-9 {
+            continue;
+        }
+        trimmed += 1;
+        let mut excess = total - 1.0;
+        if let Some(n) = natuur {
+            let cut = fractions[n][h].min(excess);
+            fractions[n][h] -= cut;
+            excess -= cut;
+        }
+        if excess > 1e-9 {
+            let t = 1.0 + excess;
+            for f in fractions.iter_mut() {
+                f[h] /= t;
+            }
+        }
+    }
+    let coverage: Vec<f64> = (0..hexes.len()).map(|h| fractions.iter().map(|f| f[h]).sum::<f64>().min(1.0)).collect();
     let labels: Vec<String> = groups.iter().map(|(_, l)| (*l).clone()).collect();
 
     let n = hexes.len();
@@ -64,7 +111,7 @@ pub fn run(config: &BrpConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
     write_table(out, columns)?;
     let farmed = coverage.iter().filter(|&&c| c > 0.0).count();
     eprintln!(
-        "brp {year}: {} parcels ({unmapped} with unmapped gewascode) -> {farmed}/{n} hexes with agriculture in {:.2?} -> {}",
+        "brp {year}: {} parcels ({unmapped} with unmapped gewascode, {duplicates} duplicates dropped, {trimmed} hexes with overlapping parcels resolved) -> {farmed}/{n} hexes with agriculture in {:.2?} -> {}",
         table.geometries.len(),
         t0.elapsed(),
         out.display()

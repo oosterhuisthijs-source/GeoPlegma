@@ -84,7 +84,8 @@ const EARTH_M2: f64 = 510_065_621_724_088.5;
 /// polygon here can legitimately cover more than half the Earth, so anything
 /// above that is taken as the complement.
 fn polygon_area_m2(p: &geo::Polygon<f64>) -> f64 {
-    let a = p.clone().orient(Direction::Default).geodesic_area_unsigned();
+    // Invalid inputs can even come back negative; only the magnitude counts.
+    let a = p.clone().orient(Direction::Default).geodesic_area_unsigned().abs();
     if a > EARTH_M2 / 2.0 { (EARTH_M2 - a).max(0.0) } else { a }
 }
 
@@ -213,10 +214,11 @@ impl PieceIndex {
 
 /// Overlay `geoms` (+ attribute columns) onto `hexes`.
 ///
-/// `empty_sum_is_zero`: what a `Sum` column reports for a hex no source
-/// polygon touches. True for exhaustive count layers (CBS only publishes
-/// squares that have residents/dwellings, so "no square" means zero), false
-/// when absence should mean "unknown".
+/// `empty_sum_is_zero`: what a `Sum` column reports for a hex without any
+/// published value (no source polygon, or only null values). True for
+/// exhaustive count layers (CBS: no square = nobody lives there; a suppressed
+/// square = a small count CBS doesn't publish), false when absence should
+/// mean "unknown".
 pub fn overlay(
     hexes: &[Hex],
     geoms: &[MultiPolygon<f64>],
@@ -253,9 +255,13 @@ pub fn overlay(
                         NumericAgg::Sum => {
                             let mut any = false;
                             let s: f64 = vals.inspect(|_| any = true).map(|(v, _, frac)| v * frac).sum();
+                            // With `empty_sum_is_zero` a sum is "the sum of the
+                            // published values": no polygons, or only polygons
+                            // whose value is null (e.g. CBS-suppressed small
+                            // counts), both give 0. Otherwise such hexes are null.
                             if any {
                                 Some(s)
-                            } else if hits.is_empty() && empty_sum_is_zero {
+                            } else if empty_sum_is_zero {
                                 Some(0.0)
                             } else {
                                 None

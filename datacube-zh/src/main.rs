@@ -46,12 +46,18 @@ enum Command {
         #[arg(long)]
         boundary: Option<PathBuf>,
     },
-    /// Aggregate CBS 100m squares onto the grid, per year.
+    /// Aggregate a yearly polygon-statistics layer onto the grid: CBS 100m
+    /// squares (default), or e.g. `--layer wb` (buurt kerncijfers) /
+    /// `--layer lbm` (Leefbaarometer) with their own config.
     Cbs {
-        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023])]
+        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])]
         years: Vec<i64>,
-        #[arg(long, default_value = "datacube-zh/config/cbs.toml")]
-        config: PathBuf,
+        /// Reads <work>/<layer>/<layer>_<year>.parquet, writes layers/<layer>_<year>.parquet.
+        #[arg(long, default_value = "cbs")]
+        layer: String,
+        /// Defaults to datacube-zh/config/<layer>.toml.
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
     /// Assign gemeente/wijk/buurt (CBS Wijk- en Buurtkaart) to each hex.
     Admin,
@@ -62,7 +68,7 @@ enum Command {
     },
     /// BRP gewaspercelen: per-hex crop-group fractions, per year.
     Brp {
-        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023])]
+        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])]
         years: Vec<i64>,
         #[arg(long, default_value = "datacube-zh/config/brp_groups.toml")]
         config: PathBuf,
@@ -102,12 +108,17 @@ fn main() -> Result<()> {
             let boundary = boundary.unwrap_or_else(|| cli.data.join("sources/bestuurlijk/provincies.json"));
             grid::build(&boundary, &region.province_codes, &grid_path)?;
         }
-        Command::Cbs { years, config } => {
-            let config = cbs::CbsConfig::load(&config)?;
+        Command::Cbs { years, layer, config } => {
+            let config_path = config.unwrap_or_else(|| PathBuf::from(format!("datacube-zh/config/{layer}.toml")));
+            let config = cbs::CbsConfig::load(&config_path)?;
             let hexes = grid::load_hexes(&grid_path)?;
             for year in years {
-                let input = work.join(format!("cbs/cbs_{year}.parquet"));
-                let out = work.join(format!("layers/cbs_{year}.parquet"));
+                let input = work.join(format!("{layer}/{layer}_{year}.parquet"));
+                if !input.exists() {
+                    eprintln!("{layer} {year}: {} missing, skipped", input.display());
+                    continue;
+                }
+                let out = work.join(format!("layers/{layer}_{year}.parquet"));
                 cbs::run(&config, &hexes, &input, year, &out)?;
             }
         }

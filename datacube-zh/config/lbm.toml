@@ -1,0 +1,20 @@
+# Leefbaarometer 3.0 (BZK) 100 m grid -> H3 (`datacube-zh cbs --layer lbm`).
+# Prepared by prepare/lbm.py (measurement years 2018, 2020, 2022, 2024 of the
+# "Meting 2024" open data, one consistent model run). Area-weighted average
+# of the cells overlapping a hex. In assemble, odd cube years take the
+# previous measurement (lbm_source_year).
+
+sentinel_threshold = -1e30
+coverage_name = "lbm_coverage"
+plain_names = true
+
+[aggregation]
+area_weighted_average = [
+  "lbm_score",
+  "lbm_afwijking",
+  "lbm_fysieke_omgeving",
+  "lbm_overlast_onveiligheid",
+  "lbm_sociale_samenhang",
+  "lbm_voorzieningen",
+  "lbm_woningvoorraad",
+]

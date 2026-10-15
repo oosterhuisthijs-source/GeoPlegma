@@ -70,6 +70,11 @@ dichtstbijzijnde_ziekenhuis_incl_buitenpolikliniek_afst_in_km = "dichtstbijzijnd
 # 2020
 dichtstbijzijnde_winkel_ov_dagel_levensm_afst_in_km = "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km"
 
+# CBS 2025 split "bouwjaar 15 en later" into "15 tot 25" + "25 en later";
+# summed back for continuity (the new columns are kept as well).
+[derived]
+aantal_woningen_bouwjaar_15_en_later = ["aantal_woningen_bouwjaar_15_tot_25", "aantal_woningen_bouwjaar_25_en_later"]
+
 [aggregation]
 sum = [
   "aantal_inwoners",
@@ -95,6 +100,8 @@ sum = [
   "aantal_woningen_bouwjaar_95_tot_05",
   "aantal_woningen_bouwjaar_05_tot_15",
   "aantal_woningen_bouwjaar_15_en_later",
+  "aantal_woningen_bouwjaar_15_tot_25",
+  "aantal_woningen_bouwjaar_25_en_later",
   "aantal_meergezins_woningen",
   "aantal_huurwoningen_in_bezit_woningcorporaties",
   "aantal_niet_bewoonde_woningen",

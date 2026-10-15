@@ -59,6 +59,14 @@ ogr2ogr -f Parquet own_data/work/bbg/nbbg_undissolved.parquet \
 datacube-zh/prepare/brp.py --brp-dir <dir with <year>/ downloads>   # -> work/brp/, config/brp_groups.toml
 ./target/release/datacube-zh brp                   # -> work/layers/brp_<year>.parquet (~17 s)
 
+# 4d. 3D BAG (Portolan NL mirror, 1.4 GB, shared), buurt kerncijfers, Leefbaarometer
+datacube-zh/prepare/static.py --only bag3d && ./target/release/datacube-zh static
+datacube-zh/prepare/wb.py && ./target/release/datacube-zh cbs --layer wb
+datacube-zh/prepare/lbm.py && ./target/release/datacube-zh cbs --layer lbm
+
+# Every step takes --region (zh default, nl = Nederland; config/regions.toml):
+#   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
+
 # 5. assemble -> out/datacube_zh (real values, Delta + parquet)
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
 uv run datacube-zh/assemble.py
@@ -264,3 +272,40 @@ Known and accepted (documented, not "fixed"):
   NBBG also counts farmyards and ditches).
 - NBBG (land use) + BRP (crops, yearly) replace LGN for national use; LGN
   stays in as the ZH-only stopgap.
+
+## Regions, years and later additions
+
+- `config/regions.toml`: `zh` (default, `own_data/work`, `out/datacube_zh`)
+  and `nl` (`work_nl`, `out_nl/datacube_nl`; rasters fetched at >= 25 m).
+  The national cube is 468,688 hexes x 2018-2025 (3.75M rows, 290 columns);
+  assembly streams one year at a time into a `year_int`-partitioned Delta
+  table (~60 s, ~7 GB peak).
+- Years 2018-2025. CBS squares 2024 (v2) and 2025 (v1, preliminary; also
+  publishes many squares with suppressed residents). NBBG 2024-2025 use
+  peiljaar 2022; LGN stopgap stays 2018-2023 (ZH only).
+- CBS sums are "the sum of published values": a hex touched only by
+  suppressed squares gets 0 (not null), consistent with hexes without squares.
+  CBS 2025 split "bouwjaar 15 en later"; `[derived]` in cbs.toml sums it back.
+- **3D BAG** (TU Delft, via Portolan NL GeoParquet on source.coop): per hex
+  number of buildings (apportioned by footprint share), footprint, LoD2.2
+  volume, greenhouse/warehouse footprint, built-up fraction, mean/max height
+  (volume / footprint; > 250 m treated as modelling error), mean construction
+  year. b3_bouwlagen left out (only ~half the buildings, capped at 5). Checks:
+  1.81M buildings in ZH, footprint sum = coverage, kas vs NBBG glastuinbouw
+  r 0.98.
+- **BRP** 2018-2025 from the local official downloads; exact duplicate
+  parcels dropped, overlapping registrations (nature parcels on top of crop
+  parcels) resolved by trimming "natuur" first.
+- **Buurt kerncijfers** (`wb_*`, 40 indicators: income, wealth, labour,
+  households, housing, energy, cars, urbanity) from each year's Wijk- en
+  Buurtkaart; area-weighted average of overlapping buurten. Income figures
+  run to 2023 (the 2024 v2 / 2025 v1 kaarten don't carry them yet).
+  Percentages > 100 in the source are nulled. Income vs CBS WOZ r 0.62.
+- **Leefbaarometer 3.0** (`lbm_*`): total score, deviation and the five
+  dimensions on the 100 m grid, measurement years 2018/2020/2022/2024; odd
+  cube years take the previous measurement (`lbm_source_year`). Only cells
+  with addresses are scored. Leefbaarometer vs income r 0.68.
+- Final audit (both regions): no duplicate keys, no NaN/inf/sentinels, all
+  fractions/percentages in range, NBBG and BRP fractions sum to <= 1 (NL NBBG
+  min 0.76 = border hexes partly abroad). Population vs CBS official: NL 2023
+  17.14M (CBS-published squares; suppression makes it a few % low).

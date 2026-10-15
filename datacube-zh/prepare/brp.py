@@ -82,14 +82,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--brp-dir", default=DEFAULT_BRP_DIR)
     ap.add_argument("--data", default="own_data")
-    ap.add_argument("--years", default="2018-2023")
+    ap.add_argument("--years", default="2018-2025")
     ap.add_argument("--config-out", default="datacube-zh/config/brp_groups.toml")
     ap.add_argument("--region", default="zh")
+    ap.add_argument("--out-dir", default=None, help="override the output directory")
     args = ap.parse_args()
     reg = regions.load(args.region)
     BBOX_RD = reg["bbox_rd"]
     y0, y1 = map(int, args.years.split("-"))
-    out_dir = Path(args.data) / reg["work"] / "brp"
+    out_dir = Path(args.out_dir) if args.out_dir else Path(args.data) / reg["work"] / "brp"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     codes = {}  # gewascode -> {gewas, category, km2}
@@ -104,7 +105,7 @@ def main():
                  "-lco", "GEOMETRY_ENCODING=WKB", "-lco", "COMPRESSION=ZSTD", "-lco", "GEOMETRY_NAME=geom", "-overwrite"],
                 check=True,
             )
-            log(f"brp {year}: {src.name} -> {out}")
+            log(f"brp {year}: {Path(str(src)).name} -> {out}")
         # Distinct codes + area (in the clipped region) for the mapping file.
         stats = subprocess.run(
             ["ogr2ogr", "-f", "CSV", "/vsistdout/", str(out), "-dialect", "SQLite", "-sql",

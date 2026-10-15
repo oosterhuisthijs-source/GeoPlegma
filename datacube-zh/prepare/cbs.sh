@@ -32,6 +32,9 @@ declare -A URLS=(
   [2021]="https://download.cbs.nl/vierkant/100/2024-cbs_vk100_2021_vol.zip"
   [2022]="https://download.cbs.nl/vierkant/100/2025-cbs_vk100_2022_vol.zip"
   [2023]="https://download.cbs.nl/vierkant/100/2026-cbs_vk100_2023_vol.zip"
+  # Not yet final: 2024 v2, 2025 v1 (preliminary).
+  [2024]="https://geodata.cbs.nl/files/Vierkant_statistiek/2024/2026-cbs_vk100_2024_v2.zip"
+  [2025]="https://geodata.cbs.nl/files/Vierkant_statistiek/2025/2026-cbs_vk100_2025_v1.zip"
 )
 
 for year in "${!URLS[@]}"; do

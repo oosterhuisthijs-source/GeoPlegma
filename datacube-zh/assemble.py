@@ -33,7 +33,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from deltalake import write_deltalake
 
-YEARS = range(2018, 2024)
+YEARS = range(2018, 2026)
 DEFAULT_ORIGINAL = "/home/thijsradijs/ruimtelijke-assistent/src/backend/data/volledige_tijdreeks_delta"
 CBS_SUFFIXES = ("_sum", "_area_weighted_average", "_min", "_max")
 
@@ -88,7 +88,7 @@ def load_lgn(data: Path) -> pa.Table | None:
         total = present[0]
         for col in present[1:]:
             total = pc.add(total, col)
-        cols["lgn_coverage"] = total
+        cols["lgn_coverage"] = pc.min_element_wise(total, 1.0)
         # Dominant class, written like the original ("zout water").
         names = [c.removesuffix("_fraction").replace("_", " ") for c in classes if c in t.column_names]
         rows = list(zip(*[t[c].to_pylist() for c in classes if c in t.column_names]))
@@ -103,7 +103,7 @@ def load_lgn(data: Path) -> pa.Table | None:
 
 
 # NBBG reference year used for each cube year (NBBG has peiljaren 2020 and 2022).
-BBG_YEAR_FOR = {2018: 2020, 2019: 2020, 2020: 2020, 2021: 2020, 2022: 2022, 2023: 2022}
+BBG_YEAR_FOR = {2018: 2020, 2019: 2020, 2020: 2020, 2021: 2020, 2022: 2022, 2023: 2022, 2024: 2022, 2025: 2022}
 
 
 def load_brp(work: Path, year: int) -> pa.Table | None:
@@ -122,10 +122,27 @@ def load_bbg(work: Path, year: int) -> pa.Table | None:
     return t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64()))
 
 
+def load_wb(work: Path, year: int) -> pa.Table | None:
+    """CBS kerncijfers wijken en buurten (datacube-zh cbs --layer wb)."""
+    f = work / f"layers/wb_{year}.parquet"
+    return pq.read_table(f) if f.exists() else None
+
+
+def load_lbm(work: Path, year: int) -> pa.Table | None:
+    """Leefbaarometer: biennial measurements; odd years take the previous one."""
+    src = year if year % 2 == 0 else year - 1
+    f = work / f"layers/lbm_{src}.parquet"
+    if not f.exists():
+        return None
+    t = pq.read_table(f)
+    t = t.set_column(t.schema.get_field_index("year_int"), "year_int", pa.array([year] * t.num_rows, pa.int64()))
+    return t.append_column("lbm_source_year", pa.array([src] * t.num_rows, pa.int64()))
+
+
 def build_year(work: Path, year: int, base: pa.Table, lgn: pa.Table | None) -> pa.Table:
     """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG (+ LGN)."""
     cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
-    for layer in (load_brp(work, year), load_bbg(work, year)):
+    for layer in (load_brp(work, year), load_bbg(work, year), load_wb(work, year), load_lbm(work, year)):
         if layer is not None:
             cube = left_join(cube, layer, ["h3_id", "year_int"])
     if lgn is not None:
@@ -222,8 +239,21 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         src = layer.get("description", "")
         info[layer["name"]] = (f"{src} [{layer['wcs']} {layer['coverage']}]", None,
                                f"{layer['agg']} over alle pixels in de cel (pixelcentrum -> H3 via geoplegma zone_from_point)")
+    numeric_how = {
+        "sum": "som, verdeeld naar het aandeel van elk object dat in de cel ligt",
+        "area_weighted_average": "oppervlaktegewogen gemiddelde over de objecten in de cel",
+        "max": "maximum over de objecten die de cel raken",
+        "min": "minimum over de objecten die de cel raken",
+    }
     for layer in static.get("vector", []):
         src = layer.get("description", "")
+        if layer["agg"] == "numeric":
+            src = f"{src} [{layer.get('parquet', '')}]"
+            for o in layer.get("outputs", []):
+                info[o["name"]] = (src, None, f"{numeric_how[o['agg']]} (bronkolom {o['column']})")
+            if layer.get("coverage"):
+                info[layer["coverage"]] = (src, "0-1", "aandeel van de cel bedekt door de objecten")
+            continue
         how = "true als een polygoon de cel raakt" if layer["agg"] == "any" else "waarde van de polygoon met de grootste overlap"
         info[layer["name"]] = (src, None, how)
         if layer.get("label"):
@@ -233,7 +263,20 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
     for field in schema:
         name = field.name
         src, unit, agg = info.get(name, (None, None, None))
-        if name.startswith("brp_"):
+        if name.startswith("wb_"):
+            src = "CBS Kerncijfers wijken en buurten (Wijk- en Buurtkaart van dat jaar, laatste versie); config/wb.toml"
+            unit = "0-1" if name == "wb_coverage" else None
+            agg = ("aandeel van de cel bedekt door buurten" if name == "wb_coverage"
+                   else "oppervlaktegewogen gemiddelde van de buurten die de cel overlappen (buurtwaarde gelijk verdeeld over de buurt)")
+        elif name.startswith("lbm_"):
+            src = "Leefbaarometer 3.0 (BZK), Meting 2024 open data, 100m grid"
+            unit = "0-1" if name == "lbm_coverage" else None
+            agg = {
+                "lbm_coverage": "aandeel van de cel bedekt door Leefbaarometer-gridcellen",
+                "lbm_source_year": "meetjaar van de waarden (tweejaarlijks; oneven jaren = vorige meting)",
+                "lbm_score": "totaalscore leefbaarheid (absoluut), oppervlaktegewogen gemiddelde van de 100m-cellen",
+            }.get(name, "afwijking t.o.v. het landelijk gemiddelde (score/dimensie), oppervlaktegewogen gemiddelde van de 100m-cellen")
+        elif name.startswith("brp_"):
             src = "BRP gewaspercelen (RVO via PDOK), definitief, per jaar; gewascode -> gewasgroep in config/brp_groups.toml"
             unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
             agg = {
@@ -244,7 +287,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
             src = "CBS Nieuw Bestand Bodemgebruik, mutatiebestand NBBG2022 v1 (peiljaren 2020 en 2022)"
             unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
             agg = {
-                "bbg_source_year": "NBBG-peiljaar van de waarden (2018-2021 -> 2020, 2022-2023 -> 2022)",
+                "bbg_source_year": "NBBG-peiljaar van de waarden (2018-2021 -> 2020, 2022-2025 -> 2022)",
                 "bbg_coverage": "som van alle bbg_*_fraction (1 = cel volledig gekarteerd)",
                 "bbg_dominant": "categorie met het grootste oppervlak in de cel",
             }.get(name, "aandeel van het celoppervlak met deze bodemgebruikscategorie")

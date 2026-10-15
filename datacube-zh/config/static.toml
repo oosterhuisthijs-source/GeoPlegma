@@ -189,3 +189,46 @@ LEFT JOIN soil_units u ON u.code = su.soilunit_code
 column = "bodemklasse"
 label_column = "bodemnaam"
 agg = "mode"
+
+# --- Buildings: 3D BAG (TU Delft) via the Portolan NL cloud-native mirror ---
+#   agg = "numeric": per-output overlay aggregation of numeric attributes
+#   (sum = apportioned by the share of the building footprint in the hex, so
+#   a building split over two hexes counts partly in each; average/max over
+#   the buildings touching the hex). `coverage` = built-up share of the hex.
+
+[[vector]]
+name = "bag3d"
+description = "3D BAG (TU Delft), BAG-panden met 3D-maten; snapshot 2024 (AHN-puntenwolk 2024), via Portolan NL"
+parquet = "https://data.source.coop/cholmes/portolan-nl/tudelft/3dbag/3dbag-pand.parquet"
+layer = "3dbag-pand"
+# Derived on the region clip (SQLite dialect). Buildings in use or under
+# renovation only; implausible/nodata values (volume has 1e30-scale fill
+# values) become NULL. Height = LoD2.2 volume / footprint (mean building
+# height, available for ~all buildings; b3_h_nok is NULL for every flat roof;
+# > 250 m is a modelling error: the tallest Dutch building is ~215 m).
+# b3_bouwlagen is left out: only estimated for ~half the buildings and capped
+# at 5 in this 3D BAG release.
+sql = """
+SELECT geom,
+  CAST(1 AS REAL) AS n,
+  CAST(b3_opp_grond AS REAL) AS footprint_m2,
+  CAST(CASE WHEN b3_volume_lod22 > 0 AND b3_volume_lod22 < 1e7 THEN b3_volume_lod22 END AS REAL) AS volume_m3,
+  CAST(CASE WHEN b3_opp_grond > 1 AND b3_volume_lod22 > 0 AND b3_volume_lod22 / b3_opp_grond < 250
+            THEN b3_volume_lod22 / b3_opp_grond END AS REAL) AS height_m,
+  CAST(CASE WHEN oorspronkelijkbouwjaar BETWEEN 1000 AND 2030 THEN oorspronkelijkbouwjaar END AS REAL) AS bouwjaar,
+  CAST(CASE WHEN b3_kas_warenhuis THEN b3_opp_grond ELSE 0 END AS REAL) AS kas_warenhuis_m2
+FROM "3dbag-pand"
+WHERE status IN ('Pand in gebruik', 'Pand in gebruik (niet ingemeten)', 'Verbouwing pand')
+"""
+agg = "numeric"
+coverage = "bag3d_bebouwd_fraction"
+empty_is_zero = true
+outputs = [
+  { column = "n", agg = "sum", name = "bag3d_aantal_panden" },
+  { column = "footprint_m2", agg = "sum", name = "bag3d_footprint_m2" },
+  { column = "volume_m3", agg = "sum", name = "bag3d_volume_m3" },
+  { column = "kas_warenhuis_m2", agg = "sum", name = "bag3d_kas_warenhuis_m2" },
+  { column = "height_m", agg = "area_weighted_average", name = "bag3d_hoogte_gem_m" },
+  { column = "height_m", agg = "max", name = "bag3d_hoogte_max_m" },
+  { column = "bouwjaar", agg = "area_weighted_average", name = "bag3d_bouwjaar_gem" },
+]

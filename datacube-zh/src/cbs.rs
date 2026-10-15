@@ -14,12 +14,25 @@ use crate::overlay::{NumericAgg, NumericInput, overlay};
 pub struct CbsConfig {
     pub sentinel_threshold: f64,
     pub percentage_max: Option<f64>,
+    /// Column-name prefixes `percentage_max` applies to (default ["percentage_"]).
+    #[serde(default)]
+    pub percentage_prefixes: Vec<String>,
     #[serde(default)]
     pub complements: Vec<[String; 2]>,
     #[serde(default)]
     pub null_strings: Vec<String>,
     #[serde(default)]
     pub rename: HashMap<String, String>,
+    /// target -> source columns summed per polygon, used when a source year
+    /// splits a column (e.g. CBS 2025 split bouwjaar "15 en later" into
+    /// "15 tot 25" + "25 en later"). Only filled where the target is absent.
+    #[serde(default)]
+    pub derived: HashMap<String, Vec<String>>,
+    /// Name of the coverage column (default "cbs_coverage").
+    pub coverage_name: Option<String>,
+    /// Output column = source name as-is, without the "_<aggregation>" suffix.
+    #[serde(default)]
+    pub plain_names: bool,
     pub aggregation: Aggregation,
 }
 
@@ -81,7 +94,12 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
         .collect();
     if let Some(max) = config.percentage_max {
         let mut invalid = 0;
-        for (name, vals) in numeric.iter_mut().filter(|(n, _)| n.starts_with("percentage_")) {
+        let prefixes: Vec<&str> = if config.percentage_prefixes.is_empty() {
+            vec!["percentage_"]
+        } else {
+            config.percentage_prefixes.iter().map(String::as_str).collect()
+        };
+        for (name, vals) in numeric.iter_mut().filter(|(n, _)| prefixes.iter().any(|p| n.starts_with(p))) {
             for v in vals.iter_mut() {
                 if v.is_some_and(|x| x > max) {
                     *v = None;
@@ -117,6 +135,19 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
             numeric.insert(b.clone(), fb);
             eprintln!("  complement {a}/{b}: filled {na} + {nb} suppressed values");
         }
+    }
+    for (target, sources) in &config.derived {
+        if numeric.contains_key(target) || !sources.iter().all(|c| numeric.contains_key(c)) {
+            continue;
+        }
+        let summed: Vec<Option<f64>> = (0..n_src)
+            .map(|i| {
+                let parts: Vec<f64> = sources.iter().filter_map(|c| numeric[c][i]).collect();
+                (!parts.is_empty()).then(|| parts.iter().sum())
+            })
+            .collect();
+        numeric.insert(target.clone(), summed);
+        eprintln!("  derived {target} = {}", sources.join(" + "));
     }
     let strings: HashMap<String, Vec<Option<String>>> = table
         .strings
@@ -167,10 +198,14 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
     let mut columns = vec![
         ("h3_id".to_string(), OutColumn::Str(hexes.iter().map(|h| Some(h.id.clone())).collect())),
         ("year_int".to_string(), OutColumn::I64(vec![Some(year); n])),
-        ("cbs_coverage".to_string(), OutColumn::F64(result.coverage.iter().map(|&c| Some(c)).collect())),
+        (
+            config.coverage_name.clone().unwrap_or_else(|| "cbs_coverage".to_string()),
+            OutColumn::F64(result.coverage.iter().map(|&c| Some(c)).collect()),
+        ),
     ];
     for ((name, agg), vals) in wanted.iter().zip(result.numeric) {
-        columns.push((format!("{name}_{}", agg.suffix()), OutColumn::F64(vals)));
+        let out_name = if config.plain_names { name.to_string() } else { format!("{name}_{}", agg.suffix()) };
+        columns.push((out_name, OutColumn::F64(vals)));
     }
     for (name, vals) in config.aggregation.mode.iter().zip(result.modes) {
         columns.push((format!("{name}_mode"), OutColumn::Str(vals)));
@@ -178,14 +213,15 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
     write_table(out, columns)?;
 
     eprintln!(
-        "cbs {year}: {n_src} squares -> {n} hexes | read {t_read:.2?}, overlay {t_overlay:.2?} -> {}",
+        "{} {year}: {n_src} polygons -> {n} hexes | read {t_read:.2?}, overlay {t_overlay:.2?} -> {}",
+        input.file_stem().and_then(|s| s.to_str()).and_then(|s| s.rsplit_once('_')).map_or("cbs", |p| p.0),
         out.display()
     );
     if !missing.is_empty() {
         eprintln!("  not in source this year (null): {}", missing.join(", "));
     }
     if !unconfigured.is_empty() {
-        eprintln!("  in source but not configured (dropped): {unconfigured:?}");
+        eprintln!("  in source but not configured (dropped): {} columns", unconfigured.len());
     }
     Ok(())
 }

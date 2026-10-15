@@ -11,7 +11,7 @@ use geo::MultiPolygon;
 
 use crate::geoparquet::{OutColumn, read_polygon_table, write_table};
 use crate::grid::{Hex, h3};
-use crate::overlay::overlay;
+use crate::overlay::{NumericAgg, NumericInput, overlay};
 use crate::raster::{RasterAgg, aggregate};
 
 #[derive(serde::Deserialize)]
@@ -36,6 +36,15 @@ pub struct RasterLayer {
 pub enum VectorAgg {
     Any,
     Mode,
+    /// Numeric attributes aggregated per `outputs` (sum / average / min / max).
+    Numeric,
+}
+
+#[derive(serde::Deserialize)]
+pub struct NumericOutput {
+    pub column: String,
+    pub agg: NumericAgg,
+    pub name: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -45,6 +54,21 @@ pub struct VectorLayer {
     pub column: Option<String>,
     pub label: Option<String>,
     pub label_column: Option<String>,
+    /// `numeric` only: the outputs, an optional column for the covered share
+    /// of the hex, and whether sums are 0 (not null) where nothing overlaps.
+    #[serde(default)]
+    pub outputs: Vec<NumericOutput>,
+    pub coverage: Option<String>,
+    #[serde(default)]
+    pub empty_is_zero: bool,
+}
+
+/// A vector layer's parts concatenated: geometries, numeric attributes, and
+/// every attribute as text (numbers stringified so `mode` works uniformly).
+struct VectorParts {
+    geoms: Vec<MultiPolygon<f64>>,
+    numeric: HashMap<String, Vec<Option<f64>>>,
+    text: HashMap<String, Vec<Option<String>>>,
 }
 
 impl StaticConfig {
@@ -55,7 +79,7 @@ impl StaticConfig {
 }
 
 /// All `<name>__<i>.parquet` parts of a vector layer, concatenated.
-fn read_vector_parts(dir: &Path, name: &str) -> Result<(Vec<MultiPolygon<f64>>, HashMap<String, Vec<Option<String>>>)> {
+fn read_vector_parts(dir: &Path, name: &str) -> Result<VectorParts> {
     let mut parts: Vec<PathBuf> = std::fs::read_dir(dir)?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
@@ -69,33 +93,35 @@ fn read_vector_parts(dir: &Path, name: &str) -> Result<(Vec<MultiPolygon<f64>>, 
     if parts.is_empty() {
         bail!("no {name}__*.parquet in {} (run prepare/static.py)", dir.display());
     }
-    let mut geoms = Vec::new();
-    let mut cols: HashMap<String, Vec<Option<String>>> = HashMap::new();
+    let mut out = VectorParts { geoms: Vec::new(), numeric: HashMap::new(), text: HashMap::new() };
     for p in parts {
         let t = read_polygon_table(&p)?;
-        let n0 = geoms.len();
+        let n0 = out.geoms.len();
         let n = t.geometries.len();
-        // Numeric attributes are stringified (integers without a decimal point)
-        // so `mode` works uniformly.
-        let mut attrs: HashMap<String, Vec<Option<String>>> = t.strings;
-        for (k, v) in t.numeric {
-            attrs.insert(
-                k,
-                v.into_iter()
+        let mut text: HashMap<String, Vec<Option<String>>> = t.strings;
+        for (k, v) in &t.numeric {
+            text.insert(
+                k.clone(),
+                v.iter()
                     .map(|x| x.map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }))
                     .collect(),
             );
         }
-        for (k, v) in attrs {
-            let col = cols.entry(k).or_insert_with(|| vec![None; n0]);
-            col.extend(v);
+        for (k, v) in t.numeric {
+            out.numeric.entry(k).or_insert_with(|| vec![None; n0]).extend(v);
         }
-        geoms.extend(t.geometries);
-        for col in cols.values_mut() {
+        for (k, v) in text {
+            out.text.entry(k).or_insert_with(|| vec![None; n0]).extend(v);
+        }
+        out.geoms.extend(t.geometries);
+        for col in out.numeric.values_mut() {
+            col.resize(n0 + n, None);
+        }
+        for col in out.text.values_mut() {
             col.resize(n0 + n, None);
         }
     }
-    Ok((geoms, cols))
+    Ok(out)
 }
 
 pub fn run(config: &StaticConfig, hexes: &[Hex], static_dir: &Path, out: &Path, only: &[String]) -> Result<()> {
@@ -131,7 +157,7 @@ pub fn run(config: &StaticConfig, hexes: &[Hex], static_dir: &Path, out: &Path, 
 
     for layer in config.vector.iter().filter(|l| wanted(&l.name)) {
         let t = Instant::now();
-        let (geoms, attrs) = read_vector_parts(static_dir, &layer.name)?;
+        let VectorParts { geoms, numeric, text: attrs } = read_vector_parts(static_dir, &layer.name)?;
         match layer.agg {
             VectorAgg::Any => {
                 let r = overlay(hexes, &geoms, &[], &[], false);
@@ -145,6 +171,34 @@ pub fn run(config: &StaticConfig, hexes: &[Hex], static_dir: &Path, out: &Path, 
                     t.elapsed()
                 );
                 columns.push((layer.name.clone(), OutColumn::Bool(flags)));
+            }
+            VectorAgg::Numeric => {
+                let inputs: Vec<NumericInput> = layer
+                    .outputs
+                    .iter()
+                    .map(|o| {
+                        let values = numeric
+                            .get(&o.column)
+                            .ok_or_else(|| anyhow!("{}: no numeric column {}", layer.name, o.column))?;
+                        Ok(NumericInput { values: values.as_slice(), agg: o.agg })
+                    })
+                    .collect::<Result<_>>()?;
+                let r = overlay(hexes, &geoms, &inputs, &[], layer.empty_is_zero);
+                eprintln!(
+                    "vector {}: {} polygons -> {} outputs, {}/{} hexes touched in {:.2?}",
+                    layer.name,
+                    geoms.len(),
+                    layer.outputs.len(),
+                    r.coverage.iter().filter(|&&c| c > 0.0).count(),
+                    hexes.len(),
+                    t.elapsed()
+                );
+                if let Some(cov) = &layer.coverage {
+                    columns.push((cov.clone(), OutColumn::F64(r.coverage.iter().map(|&c| Some(c)).collect())));
+                }
+                for (o, vals) in layer.outputs.iter().zip(r.numeric) {
+                    columns.push((o.name.clone(), OutColumn::F64(vals)));
+                }
             }
             VectorAgg::Mode => {
                 let col_name = layer.column.as_deref().ok_or_else(|| anyhow!("{}: mode needs `column`", layer.name))?;

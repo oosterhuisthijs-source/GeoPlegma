@@ -43,7 +43,9 @@ def log(*a):
 def fetch(url, out, retries=4):
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(url, timeout=600) as r, open(out, "wb") as f:
+            # Some hosts (e.g. source.coop) reject urllib's default User-Agent.
+            req = urllib.request.Request(url, headers={"User-Agent": "datacube-zh/0.1 (GDAL pipeline)"})
+            with urllib.request.urlopen(req, timeout=600) as r, open(out, "wb") as f:
                 ctype = r.headers.get("Content-Type", "")
                 shutil.copyfileobj(r, f)
             if "xml" in ctype or "text" in ctype:
@@ -119,12 +121,37 @@ def prepare_vector(layer, src_dir, out_dir):
     xmin, ymin, xmax, ymax = BBOX_RD
     common = ["-t_srs", "OGC:CRS84", "-nlt", "MULTIPOLYGON", "-makevalid",
               "-lco", "GEOMETRY_ENCODING=WKB", "-lco", "COMPRESSION=ZSTD", "-overwrite"]
-    if "wfs" in layer:
+    if "parquet" in layer:
+        # Cloud-native GeoParquet (e.g. Portolan NL): download once into the
+        # shared sources, then clip to the region and derive columns locally.
+        shared = src_dir.parent if src_dir.name == "nl" else src_dir
+        local = shared / Path(urllib.parse.urlparse(layer["parquet"]).path).name
+        if not local.exists():
+            log(f"{name}: downloading {layer['parquet']}")
+            fetch(layer["parquet"], local)
+        out = out_dir / f"{name}__0.parquet"
+        if not out.exists():
+            # Clip first (plain OGR SQL keeps the row-group bbox filter), then
+            # derive columns with the SQLite dialect on the small clip.
+            clip = out_dir / f"{name}__clip.parquet"
+            run(["ogr2ogr", "-f", "Parquet", str(clip), str(local), layer["layer"], "-overwrite",
+                 "-spat", *map(str, BBOX_RD), "-dim", "XY", "-lco", "GEOMETRY_NAME=geom",
+                 "-lco", "GEOMETRY_ENCODING=WKB"])
+            # A GeoParquet file's layer is named after the file, so point the
+            # configured SQL (written against the source layer) at the clip.
+            sql = layer["sql"].replace(f'"{layer["layer"]}"', f'"{clip.stem}"')
+            run(["ogr2ogr", "-f", "Parquet", str(out), str(clip), "-dialect", "SQLite", "-sql", sql] + common)
+            clip.unlink()
+            log(f"{name}: {local.name} -> {out}")
+    elif "wfs" in layer:
         for i, wfs_layer in enumerate(layer["layers"]):
             out = out_dir / f"{name}__{i}.parquet"
             if out.exists():
                 continue
-            run(["ogr2ogr", "-f", "Parquet", str(out), f"WFS:{layer['wfs']}", wfs_layer,
+            # Paged requests: large national layers otherwise come back as one
+            # huge, sometimes truncated, GML response.
+            run(["ogr2ogr", "--config", "OGR_WFS_PAGING_ALLOWED", "ON", "--config", "OGR_WFS_PAGE_SIZE", "5000",
+                 "-f", "Parquet", str(out), f"WFS:{layer['wfs']}", wfs_layer,
                  "-spat", *map(str, BBOX_RD), "-spat_srs", "EPSG:28992"] + common)
             log(f"{name}: {wfs_layer} -> {out}")
     else:

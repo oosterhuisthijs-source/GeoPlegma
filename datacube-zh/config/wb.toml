@@ -1,0 +1,112 @@
+# CBS Kerncijfers wijken en buurten -> H3, per year (`datacube-zh cbs --layer wb`).
+#
+# Source: the buurten layer of the CBS Wijk- en Buurtkaart of each year (latest
+# version: 2018-2023 v3, 2024 v2, 2025 v1), which carries the kerncijfers as
+# attributes. Prepared by prepare/wb.py into work/wb/wb_<year>.parquet.
+#
+# Only rates/averages/percentages are used (area-weighted average of the
+# buurten overlapping a hex): counts are much better covered by the CBS 100m
+# squares. Note that buurt figures are spread evenly over the buurt.
+#
+# CBS publishes some themes with a delay: a year's kaart may carry income /
+# wealth / energy figures of an earlier year, or none yet (latest versions
+# fill in more). Values are "as published in the kaart of that year".
+
+sentinel_threshold = -99990.0
+# Some kaarten contain percentages > 100 (e.g. percentage_ongehuwd up to 1000):
+# invalid, set to null.
+percentage_max = 100.0
+percentage_prefixes = ["wb_perc"]
+coverage_name = "wb_coverage"
+plain_names = true
+
+# Output name -> candidate source field names (first one present wins).
+[indicators]
+# Income and economy
+wb_gemiddeld_inkomen_per_inwoner = ["gemiddeld_inkomen_per_inwoner"]
+wb_gemiddeld_inkomen_per_inkomensontvanger = ["gemiddeld_inkomen_per_inkomensontvanger"]
+wb_gestandaardiseerd_inkomen_huishoudens = ["gemiddeld_gestandaardiseerd_inkomen_van_huishoudens"]
+wb_perc_personen_laag_inkomen = ["percentage_personen_met_laag_inkomen"]
+wb_perc_personen_hoog_inkomen = ["percentage_personen_met_hoog_inkomen"]
+wb_perc_huishoudens_laag_inkomen = ["percentage_huishoudens_met_laag_inkomen"]
+wb_perc_huishoudens_hoog_inkomen = ["percentage_huishoudens_met_hoog_inkomen"]
+wb_perc_huishoudens_rond_sociaal_minimum = ["percentage_huishoudens_onder_of_rond_sociaal_minimum"]
+wb_perc_huishoudens_lage_koopkracht = ["percentage_huishoudens_met_lage_koopkracht"]
+wb_huishoudens_tot_110_procent_sociaal_minimum = ["huishoudens_tot_110_percent_van_sociaal_minimum"]
+wb_mediaan_vermogen_huishoudens = ["mediaan_vermogen_van_particuliere_huish"]
+wb_netto_arbeidsparticipatie = ["netto_arbeidsparticipatie"]
+wb_perc_werknemers = ["percentage_werknemers"]
+wb_perc_zelfstandigen = ["percentage_zelfstandigen"]
+# Social and households
+wb_perc_ongehuwd = ["percentage_ongehuwd"]
+wb_perc_gehuwd = ["percentage_gehuwd"]
+wb_perc_gescheiden = ["percentage_gescheid"]
+wb_perc_verweduwd = ["percentage_verweduwd"]
+wb_geboortes_per_1000_inwoners = ["geboortes_per_1000_inwoners"]
+wb_sterfte_relatief = ["sterfte_relatief"]
+wb_perc_eenpersoonshuishoudens = ["percentage_eenpersoonshuishoudens"]
+wb_perc_huishoudens_zonder_kinderen = ["percentage_huishoudens_zonder_kinderen"]
+wb_perc_huishoudens_met_kinderen = ["percentage_huishoudens_met_kinderen"]
+wb_perc_jongeren_met_jeugdzorg = ["percentage_jongeren_met_jeugdzorg_in_natura"]
+wb_wmo_clienten_per_1000_inwoners = ["aantal_wmo_clienten_per_1000_inwoners"]
+# Housing and energy
+wb_gemiddelde_woningwaarde = ["gemiddelde_woningwaarde"]
+wb_perc_eengezinswoning = ["percentage_eengezinswoning"]
+wb_perc_meergezinswoning = ["percentage_meergezinswoning"]
+wb_perc_bewoond = ["percentage_bewoond"]
+wb_perc_huur_woningcorporaties = ["perc_huurwoningen_in_bezit_woningcorporaties"]
+wb_perc_huur_overige_verhuurders = ["perc_huurwoningen_in_bezit_overige_verhuurders"]
+wb_perc_bouwjaar_tot_2000 = ["percentage_bouwjaarklasse_tot_2000"]
+wb_perc_bouwjaar_vanaf_2000 = ["percentage_bouwjaarklasse_vanaf_2000"]
+wb_perc_woningen_stadsverwarming = ["percentage_woningen_met_stadsverwarming"]
+wb_gemiddeld_gasverbruik = ["gemiddeld_aardgasverbruik", "gemiddeld_gasverbruik_totaal"]
+wb_gemiddeld_elektriciteitsverbruik = ["gemiddelde_elektriciteitslevering", "gemiddeld_elektriciteitsverbruik_totaal"]
+# Mobility and urbanity
+wb_personenautos_per_huishouden = ["personenautos_per_huishouden"]
+wb_omgevingsadressendichtheid = ["omgevingsadressendichtheid"]
+wb_stedelijkheid = ["stedelijkheid_adressen_per_km2"]
+wb_bevolkingsdichtheid = ["bevolkingsdichtheid_inwoners_per_km2"]
+
+[aggregation]
+area_weighted_average = [
+  "wb_gemiddeld_inkomen_per_inwoner",
+  "wb_gemiddeld_inkomen_per_inkomensontvanger",
+  "wb_gestandaardiseerd_inkomen_huishoudens",
+  "wb_perc_personen_laag_inkomen",
+  "wb_perc_personen_hoog_inkomen",
+  "wb_perc_huishoudens_laag_inkomen",
+  "wb_perc_huishoudens_hoog_inkomen",
+  "wb_perc_huishoudens_rond_sociaal_minimum",
+  "wb_perc_huishoudens_lage_koopkracht",
+  "wb_huishoudens_tot_110_procent_sociaal_minimum",
+  "wb_mediaan_vermogen_huishoudens",
+  "wb_netto_arbeidsparticipatie",
+  "wb_perc_werknemers",
+  "wb_perc_zelfstandigen",
+  "wb_perc_ongehuwd",
+  "wb_perc_gehuwd",
+  "wb_perc_gescheiden",
+  "wb_perc_verweduwd",
+  "wb_geboortes_per_1000_inwoners",
+  "wb_sterfte_relatief",
+  "wb_perc_eenpersoonshuishoudens",
+  "wb_perc_huishoudens_zonder_kinderen",
+  "wb_perc_huishoudens_met_kinderen",
+  "wb_perc_jongeren_met_jeugdzorg",
+  "wb_wmo_clienten_per_1000_inwoners",
+  "wb_gemiddelde_woningwaarde",
+  "wb_perc_eengezinswoning",
+  "wb_perc_meergezinswoning",
+  "wb_perc_bewoond",
+  "wb_perc_huur_woningcorporaties",
+  "wb_perc_huur_overige_verhuurders",
+  "wb_perc_bouwjaar_tot_2000",
+  "wb_perc_bouwjaar_vanaf_2000",
+  "wb_perc_woningen_stadsverwarming",
+  "wb_gemiddeld_gasverbruik",
+  "wb_gemiddeld_elektriciteitsverbruik",
+  "wb_personenautos_per_huishouden",
+  "wb_omgevingsadressendichtheid",
+  "wb_stedelijkheid",
+  "wb_bevolkingsdichtheid",
+]
