@@ -1,0 +1,207 @@
+# CBS vierkantstatistieken 100m -> H3 res 9: per-column aggregation rules.
+#
+# Ported from datacube's cbs/config/cbs_config.yaml (the Databricks pipeline),
+# with the renames flattened to point straight at the final name (the original
+# chained some, e.g. 2018 -> 2019 name -> 2020+ name).
+#
+# Output column = "<name>_<aggregation>", e.g. aantal_inwoners_sum, matching
+# the column names of the ruimtelijke-assistent volledige_tijdreeks table.
+# Values are real (unnormalized); see the `export` step for the 0-255 version.
+
+# Numeric values <= this are CBS reserved codes (-99997 = "geheim"/suppressed;
+# CBS documents a few more in the -9999x range) and become null.
+sentinel_threshold = -99990.0
+
+# String values treated as null before taking the mode.
+null_strings = ["onclassificeerbaar"]
+
+# Source column name (any year) -> canonical name.
+[rename]
+# 2018: "gemiddelde afstand" naming
+apotheek_gemiddelde_afstand_in_km = "dichtstbijzijnde_apotheek_afstand_in_km"
+attractiepark_gemiddelde_afstand_in_km = "dichtstbijzijnde_attractiepark_afstand_in_km"
+basisonderwijs_gemiddelde_afstand_in_km = "dichtstbijzijnde_basisonderwijs_afstand_in_km"
+bibliotheek_gemiddelde_afstand_in_km = "dichtstbijzijnde_bibliotheek_afstand_in_km"
+bioscoop_gemiddelde_afstand_in_km = "dichtstbijzijnde_bioscoop_afstand_in_km"
+brandweerkazerne_gemiddelde_afstand_in_km = "dichtstbijzijnde_brandweerkazerne_afstand_in_km"
+buitenschoolse_opvang_gem_afstand_in_km = "dichtstbijzijnde_buitenschoolse_opvang_afstand_in_km"
+cafe_gemiddelde_afstand_in_km = "dichtstbijzijnde_cafe_afstand_in_km"
+cafetaria_gemiddelde_afstand_in_km = "dichtstbijzijnde_cafetaria_afstand_in_km"
+grote_supermarkt_gemiddelde_afstand_in_km = "dichtstbijzijnde_grote_supermarkt_afstand_in_km"
+havo_vwo_gemiddelde_afstand_in_km = "dichtstbijzijnde_havo_vwo_afstand_in_km"
+hotel_gemiddelde_afstand_in_km = "dichtstbijzijnde_hotel_afstand_in_km"
+huisartsenpost_gemiddelde_afstand_in_km = "dichtstbijzijnde_huisartsenpost_afstand_in_km"
+huisartsenpraktijk_gemiddelde_afstand_in_km = "dichtstbijzijnde_huisartsenpraktijk_afstand_in_km"
+kinderdagverblijf_gemiddelde_afstand_in_km = "dichtstbijzijnde_kinderdagverblijf_afstand_in_km"
+kunstijsbaan_gemiddelde_afstand_in_km = "dichtstbijzijnde_kunstijsbaan_afstand_in_km"
+museum_gemiddelde_afstand_in_km = "dichtstbijzijnde_museum_afstand_in_km"
+oprit_hoofdverkeersweg_gemiddelde_afstand_in_km = "dichtstbijzijnde_oprit_hoofdverkeersweg_afstand_in_km"
+overstapstation_gemiddelde_afstand_in_km = "dichtstbijzijnde_overstapstation_afstand_in_km"
+poppodium_gemiddelde_afstand_in_km = "dichtstbijzijnde_poppodium_afstand_in_km"
+restaurant_gemiddelde_afstand_in_km = "dichtstbijzijnde_restaurant_afstand_in_km"
+sauna_gemiddelde_afstand_in_km = "dichtstbijzijnde_sauna_afstand_in_km"
+theater_gemiddelde_afstand_in_km = "dichtstbijzijnde_theater_afstand_in_km"
+treinstation_gemiddelde_afstand_in_km = "dichtstbijzijnde_treinstation_afstand_in_km"
+vmbo_gemiddelde_afstand_in_km = "dichtstbijzijnde_vmbo_afstand_in_km"
+voortgezet_onderwijs_gem_afstand_in_km = "dichtstbijzijnde_voortgezet_onderwijs_afstand_in_km"
+warenhuis_gemiddelde_afstand_in_km = "dichtstbijzijnde_warenhuis_afstand_in_km"
+winkels_ov_dagelijkse_levensm_gem_afst_in_km = "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km"
+ziekenhuis_excl_buitenpolikliniek_gem_afst_in_km = "dichtstbijzijnde_ziekenh_excl_buitenpoli_afst_in_km"
+ziekenhuis_incl_buitenpolikliniek_gem_afst_in_km = "dichtstbijzijnde_ziekenh_incl_buitenpoli_afst_in_km"
+zonnebank_gemiddelde_afstand_in_km = "dichtstbijzijnde_zonnebank_afstand_in_km"
+zwembad_gemiddelde_afstand_in_km = "dichtstbijzijnde_zwembad_afstand_in_km"
+museum_gemiddeld_aantal_binnen_5_km = "museum_aantal_binnen_5_km"
+museum_gemiddeld_aantal_binnen_10_km = "museum_aantal_binnen_10_km"
+museum_gemiddeld_aantal_binnen_20_km = "museum_aantal_binnen_20_km"
+# 2019
+dichtstbijzijnde_winkels_ov_dagelijkse_levensm_afstand_in_km = "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km"
+dichtstbijzijnde_ziekenhuis_excl_buitenpolikliniek_afst_in_km = "dichtstbijzijnde_ziekenh_excl_buitenpoli_afst_in_km"
+dichtstbijzijnde_ziekenhuis_incl_buitenpolikliniek_afst_in_km = "dichtstbijzijnde_ziekenh_incl_buitenpoli_afst_in_km"
+# 2020
+dichtstbijzijnde_winkel_ov_dagel_levensm_afst_in_km = "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km"
+
+[aggregation]
+sum = [
+  "aantal_inwoners",
+  "aantal_mannen",
+  "aantal_vrouwen",
+  "aantal_inwoners_0_tot_15_jaar",
+  "aantal_inwoners_15_tot_25_jaar",
+  "aantal_inwoners_25_tot_45_jaar",
+  "aantal_inwoners_45_tot_65_jaar",
+  "aantal_inwoners_65_jaar_en_ouder",
+  "aantal_geboorten",
+  "aantal_part_huishoudens",
+  "aantal_eenpersoonshuishoudens",
+  "aantal_meerpersoonshuishoudens_zonder_kind",
+  "aantal_eenouderhuishoudens",
+  "aantal_tweeouderhuishoudens",
+  "aantal_woningen",
+  "aantal_woningen_bouwjaar_voor_1945",
+  "aantal_woningen_bouwjaar_45_tot_65",
+  "aantal_woningen_bouwjaar_65_tot_75",
+  "aantal_woningen_bouwjaar_75_tot_85",
+  "aantal_woningen_bouwjaar_85_tot_95",
+  "aantal_woningen_bouwjaar_95_tot_05",
+  "aantal_woningen_bouwjaar_05_tot_15",
+  "aantal_woningen_bouwjaar_15_en_later",
+  "aantal_meergezins_woningen",
+  "aantal_huurwoningen_in_bezit_woningcorporaties",
+  "aantal_niet_bewoonde_woningen",
+  "aantal_personen_met_uitkering_onder_aowlft",
+]
+area_weighted_average = [
+  "percentage_nederlandse_achtergrond",
+  "percentage_niet_westerse_migr_achtergr",
+  "percentage_westerse_migr_achtergr",
+  "percentage_geb_nederland_herkomst_nederland",
+  "percentage_geb_nederland_herkomst_overig_europa",
+  "percentage_geb_nederland_herkomst_buiten_europa",
+  "percentage_geb_buiten_nederland_herkomst_europa",
+  "percentage_geb_buiten_nederland_herkmst_buiten_europa",
+  "gemiddelde_huishoudensgrootte",
+  "percentage_koopwoningen",
+  "percentage_huurwoningen",
+  "gemiddelde_woz_waarde_woning",
+  "gemiddeld_gasverbruik_woning",
+  "gemiddeld_elektriciteitsverbruik_woning",
+]
+min = [
+  "dichtstbijzijnde_grote_supermarkt_afstand_in_km",
+  "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km",
+  "dichtstbijzijnde_warenhuis_afstand_in_km",
+  "dichtstbijzijnde_cafe_afstand_in_km",
+  "dichtstbijzijnde_cafetaria_afstand_in_km",
+  "dichtstbijzijnde_hotel_afstand_in_km",
+  "dichtstbijzijnde_restaurant_afstand_in_km",
+  "dichtstbijzijnde_buitenschoolse_opvang_afstand_in_km",
+  "dichtstbijzijnde_kinderdagverblijf_afstand_in_km",
+  "dichtstbijzijnde_brandweerkazerne_afstand_in_km",
+  "dichtstbijzijnde_oprit_hoofdverkeersweg_afstand_in_km",
+  "dichtstbijzijnde_overstapstation_afstand_in_km",
+  "dichtstbijzijnde_treinstation_afstand_in_km",
+  "dichtstbijzijnde_attractiepark_afstand_in_km",
+  "dichtstbijzijnde_bioscoop_afstand_in_km",
+  "dichtstbijzijnde_museum_afstand_in_km",
+  "dichtstbijzijnde_theater_afstand_in_km",
+  "dichtstbijzijnde_bibliotheek_afstand_in_km",
+  "dichtstbijzijnde_kunstijsbaan_afstand_in_km",
+  "dichtstbijzijnde_poppodium_afstand_in_km",
+  "dichtstbijzijnde_sauna_afstand_in_km",
+  "dichtstbijzijnde_zonnebank_afstand_in_km",
+  "dichtstbijzijnde_zwembad_afstand_in_km",
+  "dichtstbijzijnde_basisonderwijs_afstand_in_km",
+  "dichtstbijzijnde_havo_vwo_afstand_in_km",
+  "dichtstbijzijnde_vmbo_afstand_in_km",
+  "dichtstbijzijnde_voortgezet_onderwijs_afstand_in_km",
+  "dichtstbijzijnde_huisartsenpraktijk_afstand_in_km",
+  "dichtstbijzijnde_ziekenh_excl_buitenpoli_afst_in_km",
+  "dichtstbijzijnde_ziekenh_incl_buitenpoli_afst_in_km",
+  "dichtstbijzijnde_apotheek_afstand_in_km",
+  "dichtstbijzijnde_huisartsenpost_afstand_in_km",
+]
+max = [
+  "grote_supermarkt_aantal_binnen_1_km",
+  "grote_supermarkt_aantal_binnen_3_km",
+  "grote_supermarkt_aantal_binnen_5_km",
+  "winkels_ov_dagel_levensm_aantal_binnen_1_km",
+  "winkels_ov_dagel_levensm_aantal_binnen_3_km",
+  "winkels_ov_dagel_levensm_aantal_binnen_5_km",
+  "warenhuis_aantal_binnen_5_km",
+  "warenhuis_aantal_binnen_10_km",
+  "warenhuis_aantal_binnen_20_km",
+  "cafe_aantal_binnen_1_km",
+  "cafe_aantal_binnen_3_km",
+  "cafe_aantal_binnen_5_km",
+  "cafetaria_aantal_binnen_1_km",
+  "cafetaria_aantal_binnen_3_km",
+  "cafetaria_aantal_binnen_5_km",
+  "hotel_aantal_binnen_5_km",
+  "hotel_aantal_binnen_10_km",
+  "hotel_aantal_binnen_20_km",
+  "restaurant_aantal_binnen_1_km",
+  "restaurant_aantal_binnen_3_km",
+  "restaurant_aantal_binnen_5_km",
+  "buitenschoolse_opvang_aantal_binnen_1_km",
+  "buitenschoolse_opvang_aantal_binnen_3_km",
+  "buitenschoolse_opvang_aantal_binnen_5_km",
+  "kinderdagverblijf_aantal_binnen_1_km",
+  "kinderdagverblijf_aantal_binnen_3_km",
+  "kinderdagverblijf_aantal_binnen_5_km",
+  "attractiepark_aantal_binnen_10_km",
+  "attractiepark_aantal_binnen_20_km",
+  "attractiepark_aantal_binnen_50_km",
+  "bioscoop_aantal_binnen_5_km",
+  "bioscoop_aantal_binnen_10_km",
+  "bioscoop_aantal_binnen_20_km",
+  "museum_aantal_binnen_5_km",
+  "museum_aantal_binnen_10_km",
+  "museum_aantal_binnen_20_km",
+  "theater_aantal_binnen_5_km",
+  "theater_aantal_binnen_10_km",
+  "theater_aantal_binnen_20_km",
+  "basisonderwijs_aantal_binnen_1_km",
+  "basisonderwijs_aantal_binnen_3_km",
+  "basisonderwijs_aantal_binnen_5_km",
+  "havo_vwo_aantal_binnen_3_km",
+  "havo_vwo_aantal_binnen_5_km",
+  "havo_vwo_aantal_binnen_10_km",
+  "vmbo_aantal_binnen_3_km",
+  "vmbo_aantal_binnen_5_km",
+  "vmbo_aantal_binnen_10_km",
+  "voortgezet_onderwijs_aantal_binnen_3_km",
+  "voortgezet_onderwijs_aantal_binnen_5_km",
+  "voortgezet_onderwijs_aantal_binnen_10_km",
+  "huisartsenpraktijk_aantal_binnen_1_km",
+  "huisartsenpraktijk_aantal_binnen_3_km",
+  "huisartsenpraktijk_aantal_binnen_5_km",
+  "ziekenhuis_excl_buitenpoli_aantal_binnen_5_km",
+  "ziekenhuis_excl_buitenpoli_aantal_binnen_10_km",
+  "ziekenhuis_excl_buitenpoli_aantal_binnen_20_km",
+  "ziekenhuis_incl_buitenpoli_aantal_binnen_5_km",
+  "ziekenhuis_incl_buitenpoli_aantal_binnen_10_km",
+  "ziekenhuis_incl_buitenpoli_aantal_binnen_20_km",
+]
+# Categorical: area-weighted most common category (only published 2018-2019,
+# as income-percentile classes like "40-60 midden").
+mode = ["mediaan_inkomen_huishouden"]

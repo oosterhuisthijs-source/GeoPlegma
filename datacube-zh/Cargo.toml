@@ -1,0 +1,25 @@
+[package]
+name = "datacube-zh"
+version.workspace = true
+publish = false
+license.workspace = true
+edition.workspace = true
+description = "Rebuild the Zuid-Holland H3 datacube (CBS, LGN, ...) from source data with geoplegma"
+
+[[bin]]
+name = "datacube-zh"
+path = "src/main.rs"
+
+[dependencies]
+geoplegma = { path = "../geoplegma" }
+anyhow = "1.0"
+arrow = { version = "59.1", default-features = false }
+clap = { version = "4.6", features = ["derive"] }
+geo = "0.30.0"
+geojson = { version = "1.0.0", features = ["geo-types"] }
+parquet = { version = "59.1", default-features = false, features = ["arrow", "snap", "zstd"] }
+rayon = "1.10"
+rstar = "0.13.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9"
