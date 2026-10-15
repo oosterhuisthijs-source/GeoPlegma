@@ -56,7 +56,7 @@ uv run datacube-zh/assemble.py
 |---|---|---|---|---|
 | 1 | grid | PDOK provinciegebied | geoplegma `zones_from_bbox` + polygon filter | done |
 | 2 | CBS (~135 cols, yearly) | [CBS vierkantstatistieken 100m](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/kaart-van-100-meter-bij-100-meter-met-statistieken) | polygon overlay, `config/cbs.toml` | done |
-| 3 | LGN `_fraction` (yearly) | LGN rasters (to be supplied: lgn.nl has no direct download links, 4TU copies are embargoed) | raster cell centres -> `zone_from_point`, class counts | todo |
+| 3 | LGN `_fraction` (yearly) | **stopgap**: Databricks `lgn<year>_pzh_vectorized_consumption` export (`own_data/sources/lgn/`), 2018-2022, 2023 = copy of 2022. Raw rasters wanted (lgn.nl has no direct links, 4TU copies embargoed) | imported as-is in `assemble.py`; raw route would be raster engine with class counts | stopgap |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
@@ -139,8 +139,7 @@ Notes:
     mostly 0 in the original).
   - `aantal_inwoners` = real CBS population of that row's year (original:
     one static snapshot); `heeft_atlas_data` = hex has ANK heat-island data.
-  - Not yet produced, left null: LGN `_fraction` + `landgebruiksklasse`,
-    BAG `num_*`, `soortenrijkdomsklasse`, `heeft_kepler_data`,
+  - Not yet produced, left null: BAG `num_*`, `soortenrijkdomsklasse`, `heeft_kepler_data`,
     `mediaan_inkomen_huishouden_area_weighted_average` (was all-0 anyway).
   - Validation: median per-year Spearman vs the original 0.987 over 146
     shared columns. Pooled over all years it looks lower (0.60) only because
@@ -150,3 +149,25 @@ Notes:
   distance/count columns now exist for 2018-2023; `natura2000_id` uses
   official Natura 2000 site numbers; nulls where there's no data (instead of
   0); the hex set is 37,818 (204 more border slivers).
+
+## LGN stopgap (Databricks export)
+
+Assessment of `own_data/lgn_parquet_files.zip` (the Databricks LGN
+consumption tables, already on H3 res 9):
+
+- OK: correct weighting (overlap / hex area), plausible province shares,
+  stable classes stable year to year, all hexes inside our grid.
+- ~3,000 hexes (8%) missing, 90% of them open water (Haringvliet,
+  Grevelingen, lakes) -> null, `lgn_coverage` null.
+- Fractions don't sum to 1: median 0.96 on land (2021: 0.998), a quarter of
+  hexes < 0.86 -> whole polygons were dropped. `lgn_coverage` = row sum, so
+  consumers can filter or renormalise knowingly.
+- 2022 mapping bug: `natuurlijk_beheerde_agrarische_graslanden` (6.2% ->
+  0.2% of the province) and `hoofdinfrastructuur_en_spoorbaanlichamen`
+  (1.8% -> 0.06%) collapse vs 2021 (flagged in the manifest).
+- 2023 = 2022 (`lgn_source_year` = 2022).
+- The original ruimtelijke-assistent table's LGN columns do *not* match this
+  export (r ~0.3-0.4 for grass/water/forest) and look less plausible.
+
+`out/datacube_zh.columns.json` is a per-column manifest: source, unit,
+aggregation, type, warning and non-null share per year.
