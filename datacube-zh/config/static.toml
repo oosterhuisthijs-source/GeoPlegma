@@ -1,0 +1,191 @@
+# Static (non-yearly) layers -> H3 res 9.
+#
+# Read by both `prepare/static.py` (fetching: the `wcs`/`wfs`/`gpkg` keys) and
+# `datacube-zh static` (aggregation: `agg`, `nodata`, ...). Each layer writes
+# one output column named `name` (or, for `mode` with `label`, two columns).
+#
+# Raster layers are fetched over WCS 2.0.1 in EPSG:28992, warped to lon/lat,
+# and aggregated by mapping every pixel centre to its hex with geoplegma's
+# `zone_from_point`.
+#   agg = "mean" | "min" | "max" | "mode"
+#   nodata      = source values treated as "no data"
+#   nodata_fill = value nodata pixels count as (omit: they are skipped).
+#                 For flood depth "no data" means "does not flood", i.e. 0.
+#   resolution  = fetch resolution in metres (omit: native)
+#   Hexes that contain no pixel centre (rasters coarser than ~300m) take the
+#   value of the pixel under the hex centre instead.
+#
+# Vector layers are fetched over WFS (or from a GeoPackage) and overlaid on
+# the hexes with the polygon overlay engine.
+#   agg = "any"  -> true if any source polygon overlaps the hex (several
+#                   `layers` are unioned, e.g. basisnet + buisleidingen +
+#                   stationaire bronnen)
+#   agg = "mode" -> attribute `column` of the polygon covering most of the hex
+
+# --- AHN ---------------------------------------------------------------------
+
+[[raster]]
+name = "groundheight"
+description = "Maaiveldhoogte t.o.v. NAP (m), AHN4 DTM 0.5m resampled to 5m"
+wcs = "https://service.pdok.nl/rws/ahn/wcs/v1_0"
+coverage = "dtm_05m"
+resolution = 5
+agg = "mean"
+nodata = [3.4028234663852886e38, -9999]
+
+# --- LIWO maximale waterdiepte (Kaart1 = grote kans .. Kaart5 = extreem kleine kans)
+
+[[raster]]
+name = "flooddepth_1"
+description = "Maximale waterdiepte (m), LIWO kaart 1 (grote kans, 1/30 per jaar)"
+wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
+coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart1"
+resolution = 10
+agg = "mean"
+nodata = [-9999]
+nodata_fill = 0.0
+
+[[raster]]
+name = "flooddepth_2"
+description = "Maximale waterdiepte (m), LIWO kaart 2 (middelgrote kans, 1/300 per jaar)"
+wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
+coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart2"
+resolution = 10
+agg = "mean"
+nodata = [-9999]
+nodata_fill = 0.0
+
+[[raster]]
+name = "flooddepth_3"
+description = "Maximale waterdiepte (m), LIWO kaart 3 (kleine kans, 1/3.000 per jaar)"
+wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
+coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart3"
+resolution = 10
+agg = "mean"
+nodata = [-9999]
+nodata_fill = 0.0
+
+[[raster]]
+name = "flooddepth_4"
+description = "Maximale waterdiepte (m), LIWO kaart 4 (zeer kleine kans, 1/30.000 per jaar)"
+wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
+coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart4"
+resolution = 10
+agg = "mean"
+nodata = [-9999]
+nodata_fill = 0.0
+
+[[raster]]
+name = "flooddepth_5"
+description = "Maximale waterdiepte (m), LIWO kaart 5 (extreem kleine kans, 1/300.000 per jaar)"
+wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
+coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart5"
+resolution = 10
+agg = "mean"
+nodata = [-9999]
+nodata_fill = 0.0
+
+# --- RIVM Atlas Leefomgeving / Atlas Natuurlijk Kapitaal ---------------------
+
+[[raster]]
+name = "geluid_lden"
+description = "Geluidbelasting alle bronnen samen, Lden dB (RIVM, 2020)"
+wcs = "https://data.rivm.nl/geo/alo/wcs"
+coverage = "alo__rivm_20220601_Geluid_lden_allebronnen_2020"
+agg = "mean"
+nodata = [-9999, -999, 0]
+
+[[raster]]
+name = "hitte"
+description = "Stedelijk hitte-eilandeffect, gemiddelde extra temperatuur (graden C) (RIVM ANK, 2022)"
+wcs = "https://data.rivm.nl/geo/ank/wcs"
+coverage = "ank__Stedelijk_hitte_eiland_effect_01062022_v2"
+agg = "mean"
+nodata = [-9999]
+
+[[raster]]
+name = "groenklasse"
+description = "Gemiddelde groenklasse 1-4 (RIVM groenkaart 2022, 5m resampled to 10m)"
+wcs = "https://data.rivm.nl/geo/alo/wcs"
+coverage = "alo__rivm_20240101_groenkaart_2022"
+resolution = 10
+agg = "mean"
+nodata = [-9999, 255]
+
+[[raster]]
+name = "waterberging"
+description = "Waterberging grondwater (RIVM ANK d15)"
+wcs = "https://data.rivm.nl/geo/ank/wcs"
+coverage = "ank__d15_waterberging_grondwater"
+agg = "mean"
+nodata = [-9999]
+
+[[raster]]
+name = "lichtemissie"
+description = "Lichtemissie naar de hemel (RIVM, 2023; 375m raster)"
+wcs = "https://data.rivm.nl/geo/alo/wcs"
+coverage = "alo__rivm_20241018_gm_lichtemissie2023"
+agg = "mean"
+nodata = [-9999]
+
+# --- Vector layers -------------------------------------------------------------
+
+[[vector]]
+name = "explosieaandachtsgebied"
+description = "Ligt (deels) in een explosieaandachtsgebied (REV: basisnet, buisleidingen, stationaire bronnen)"
+wfs = "https://rev-portaal.nl/geoserver/wfs"
+layers = ["rev_public:bn_explosieaandachtsgebieden", "rev_public:bl_explosieaandachtsgebieden", "rev_public:ev_explosieaandachtsgebieden"]
+agg = "any"
+
+[[vector]]
+name = "civelexplosieaandachtsgebied"
+description = "Ligt (deels) in een civiel explosieaandachtsgebied (REV, categorie a/b/c)"
+wfs = "https://rev-portaal.nl/geoserver/wfs"
+layers = ["rev_public:ev_civielexplosieaandachtsgebieden_a", "rev_public:ev_civielexplosieaandachtsgebieden_b", "rev_public:ev_civielexplosieaandachtsgebieden_c"]
+agg = "any"
+
+[[vector]]
+name = "explosieaandachtsgebiedvuurwerk"
+description = "Ligt (deels) in een explosieaandachtsgebied vuurwerk (REV)"
+wfs = "https://rev-portaal.nl/geoserver/wfs"
+layers = ["rev_public:ev_explosieaandachtsgebieden_vuurwerk"]
+agg = "any"
+
+[[vector]]
+name = "brandaandachtsgebied"
+description = "Ligt (deels) in een brandaandachtsgebied (REV: basisnet, buisleidingen, stationaire bronnen)"
+wfs = "https://rev-portaal.nl/geoserver/wfs"
+layers = ["rev_public:bn_brandaandachtsgebieden", "rev_public:bl_brandaandachtsgebieden", "rev_public:ev_brandaandachtsgebieden"]
+agg = "any"
+
+[[vector]]
+name = "gifwolkaandachtsgebied"
+description = "Ligt (deels) in een gifwolkaandachtsgebied (REV: basisnet, buisleidingen, stationaire bronnen)"
+wfs = "https://rev-portaal.nl/geoserver/wfs"
+layers = ["rev_public:bn_gifwolkaandachtsgebieden", "rev_public:bl_gifwolkaandachtsgebieden", "rev_public:ev_gifwolkaandachtsgebieden"]
+agg = "any"
+
+[[vector]]
+name = "natura2000_id"
+label = "natura2000_naam"
+description = "Natura 2000-gebied dat het grootste deel van de hex beslaat (nummer + naam)"
+wfs = "https://service.pdok.nl/rvo/natura2000/wfs/v1_0"
+layers = ["natura2000:natura2000"]
+column = "nr"
+label_column = "naamN2K"
+agg = "mode"
+
+[[vector]]
+name = "bodemklasse"
+label = "bodemnaam"
+description = "Bodemeenheid (BRO Bodemkaart 1:50.000) die het grootste deel van de hex beslaat"
+gpkg = "https://service.pdok.nl/tno/bro-bodemkaart/atom/downloads/BRO_DownloadBodemkaart.gpkg"
+sql = """
+SELECT a.geom AS geom, su.soilunit_code AS bodemklasse, u.soilclassification AS bodemnaam
+FROM soilarea a
+JOIN soilarea_soilunit su ON su.maparea_id = a.maparea_id AND su.soilunit_sequencenumber = 0
+LEFT JOIN soil_units u ON u.code = su.soilunit_code
+"""
+column = "bodemklasse"
+label_column = "bodemnaam"
+agg = "mode"

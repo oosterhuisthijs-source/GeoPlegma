@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
-use arrow::array::{Array, ArrayRef, BinaryArray, Float64Array, Int64Array, StringArray};
+use arrow::array::{Array, ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray};
 use arrow::compute::cast;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
@@ -100,6 +100,9 @@ pub fn parse_wkb_polygonal(bytes: &[u8]) -> Result<MultiPolygon<f64>> {
             }
             Ok(MultiPolygon(polys))
         }
+        // Points/lines have no area, so they can't contribute to an area
+        // overlay; return an empty geometry (callers keep row alignment).
+        1 | 2 | 4 | 5 => Ok(MultiPolygon(vec![])),
         other => bail!("unsupported WKB geometry type {other} (expected Polygon/MultiPolygon)"),
     }
 }
@@ -157,6 +160,7 @@ pub enum OutColumn {
     F64(Vec<Option<f64>>),
     I64(Vec<Option<i64>>),
     Str(Vec<Option<String>>),
+    Bool(Vec<Option<bool>>),
 }
 
 /// Write named columns as a (non-geo) Parquet file.
@@ -171,6 +175,7 @@ pub fn write_table(path: &Path, columns: Vec<(String, OutColumn)>) -> Result<()>
             OutColumn::F64(v) => (DataType::Float64, Arc::new(Float64Array::from(v))),
             OutColumn::I64(v) => (DataType::Int64, Arc::new(Int64Array::from(v))),
             OutColumn::Str(v) => (DataType::Utf8, Arc::new(StringArray::from(v))),
+            OutColumn::Bool(v) => (DataType::Boolean, Arc::new(BooleanArray::from(v))),
         };
         fields.push(Field::new(name, dt, true));
         arrays.push(arr);

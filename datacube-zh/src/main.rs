@@ -9,6 +9,8 @@ mod cbs;
 mod geoparquet;
 mod grid;
 mod overlay;
+mod raster;
+mod static_layers;
 
 use std::path::PathBuf;
 
@@ -45,6 +47,14 @@ enum Command {
     },
     /// Assign gemeente/wijk/buurt (CBS Wijk- en Buurtkaart) to each hex.
     Admin,
+    /// Aggregate the static raster/vector layers from config/static.toml.
+    Static {
+        #[arg(long, default_value = "datacube-zh/config/static.toml")]
+        config: PathBuf,
+        /// Only these layers (comma-separated names); default all.
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -74,6 +84,12 @@ fn main() -> Result<()> {
                 &work.join("wijkbuurt/wijken.parquet"),
                 &work.join("layers/admin.parquet"),
             )?;
+        }
+        Command::Static { config, only } => {
+            let config = static_layers::StaticConfig::load(&config)?;
+            let hexes = grid::load_hexes(&grid_path)?;
+            let out = if only.is_empty() { "layers/static.parquet".to_string() } else { "layers/static_partial.parquet".to_string() };
+            static_layers::run(&config, &hexes, &work.join("static"), &work.join(out), &only)?;
         }
     }
     Ok(())

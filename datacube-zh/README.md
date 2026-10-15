@@ -40,6 +40,10 @@ datacube-zh/prepare/cbs.sh own_data                 # download + clip/reproject 
 # 3. gemeente/wijk/buurt (CBS Wijk- en Buurtkaart 2024)
 datacube-zh/prepare/wijkbuurt.sh own_data
 ./target/release/datacube-zh admin                 # -> work/layers/admin.parquet
+
+# 4. static layers (AHN, LIWO, RIVM, REV, Natura 2000, BRO), see config/static.toml
+datacube-zh/prepare/static.py --data own_data       # WCS/WFS/GeoPackage fetch, ~10 min
+./target/release/datacube-zh static                # -> work/layers/static.parquet (~2 min)
 ```
 
 ## Layers
@@ -50,7 +54,7 @@ datacube-zh/prepare/wijkbuurt.sh own_data
 | 2 | CBS (~135 cols, yearly) | [CBS vierkantstatistieken 100m](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/kaart-van-100-meter-bij-100-meter-met-statistieken) | polygon overlay, `config/cbs.toml` | done |
 | 3 | LGN `_fraction` (yearly) | LGN rasters (to be supplied: lgn.nl has no direct download links, 4TU copies are embargoed) | raster cell centres -> `zone_from_point`, class counts | todo |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
-| 5 | static layers: groundheight (AHN), flooddepth_1..5, bodem (BRO), BAG functions, risk areas, geluid, hitte, waterberging, lichtemissie, Natura2000, groen/soortenrijkdom | AHN / Klimaateffectatlas / PDOK / RIVM | raster sampling or polygon lookup | todo, sources to verify |
+| 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
 | 6 | assemble + optional 0-255 export (+ Delta) | — | join on `h3_id`, `year_int` | todo |
 
 ## Validation (CBS)
@@ -80,3 +84,36 @@ datacube-zh/prepare/wijkbuurt.sh own_data
   neighbouring province (~350 hexes); filter on `province_fraction` or
   gemeentecode if needed. The original also had null buurt/wijk names
   (~1k hexes); ours has none.
+
+## Static layers (`config/static.toml`)
+
+Rasters are fetched over WCS (EPSG:28992), warped to lon/lat, and every
+pixel centre is mapped to its hex with geoplegma's `zone_from_point`; rasters
+coarser than a hex fall back to the pixel under the hex centre. Vectors use the
+polygon overlay engine (`any` = overlaps the hex at all, `mode` = covers most
+of it).
+
+| Column | Source | r / agreement vs original |
+|---|---|---|
+| groundheight | AHN4 DTM (PDOK WCS `dtm_05m`, at 5m) | r 0.998 |
+| flooddepth_1..5 | LIWO `MaximaleWaterdiepteNederland_Kaart1..5` (no data = 0) | r 0.82 / 0.96 / 0.98 / 0.98 / 0.98 |
+| geluid_lden | RIVM Lden alle bronnen 2020 | r 0.977 |
+| hitte | RIVM ANK stedelijk hitte-eilandeffect 2022 | r 1.000 |
+| groenklasse | RIVM groenkaart 2022 (mean class) | r 0.972 |
+| waterberging | RIVM ANK d15 waterberging grondwater (250m) | r 0.959 |
+| lichtemissie | RIVM lichtemissie 2023 (375m) | r 0.937 |
+| explosie- / brand- / gifwolk- / civielexplosie- / vuurwerkaandachtsgebied | REV WFS (basisnet + buisleidingen + stationaire bronnen) | 99% / 99% / 93% / 100% / 100% |
+| natura2000_id (+ natura2000_naam) | PDOK Natura 2000 WFS, official site `nr` | same areas; the original used its own numbering |
+| bodemklasse, bodemnaam | BRO Bodemkaart 1:50.000 (primary soil unit) | 93% (where mapped) |
+
+Notes:
+- gifwolk: 57% of hexes vs 63% in the original; RIVM changed the gifwolk
+  calculation on 2026-01-01, so the current REV areas are smaller.
+- AHN, hitte, groenklasse and bodem have no value over open water / unmapped
+  (built-up) areas, where the original seems to have filled 0.
+- The original's fractional class values (x/7) suggest it sampled the 7 H3
+  res-10 child centres per hex; this pipeline uses every pixel instead.
+- Not rebuilt: `num_*` (BAG, deferred), `soortenrijkdomsklasse` (no public
+  source found), `landgebruiksklasse` (comes with LGN), `heeft_kepler_data`.
+  The year-independent `aantal_inwoners` (~CBS 2020/2021 totals) will be
+  filled from the CBS layer at assembly.
