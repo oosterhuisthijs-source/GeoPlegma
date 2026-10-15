@@ -72,6 +72,33 @@ impl RTreeObject for Indexed {
     }
 }
 
+/// Surface area of the WGS84 ellipsoid (m²), as `geo`'s geodesic area reports it.
+const EARTH_M2: f64 = 510_065_621_724_088.5;
+
+/// Geodesic area in m² of one polygon's *inside*.
+///
+/// `geo`'s geodesic area depends on ring orientation: a clockwise exterior
+/// ring yields the area of the rest of the sphere. Orienting first fixes that
+/// for normal polygons, but not for degenerate near-zero-area slivers (which
+/// boolean ops do produce), whose orientation is numerically undefined. No
+/// polygon here can legitimately cover more than half the Earth, so anything
+/// above that is taken as the complement.
+fn polygon_area_m2(p: &geo::Polygon<f64>) -> f64 {
+    let a = p.clone().orient(Direction::Default).geodesic_area_unsigned();
+    if a > EARTH_M2 / 2.0 { (EARTH_M2 - a).max(0.0) } else { a }
+}
+
+/// Geodesic area in m² of a multipolygon (sum of its parts, each made safe by
+/// `polygon_area_m2`). Every area in this crate goes through here.
+pub fn area_m2(mp: &MultiPolygon<f64>) -> f64 {
+    mp.0.iter().map(polygon_area_m2).sum()
+}
+
+/// `area_m2` for a single polygon.
+pub fn poly_area_m2(p: &geo::Polygon<f64>) -> f64 {
+    polygon_area_m2(p)
+}
+
 /// Polygons with more vertices than this are cut into pieces first: a single
 /// province-sized land-use polygon (NBBG has some with >1M vertices) would
 /// otherwise be intersected in full with every hex it touches.
@@ -109,6 +136,11 @@ struct PieceIndex {
     pieces: Vec<MultiPolygon<f64>>,
     owner: Vec<usize>,
     tree: RTree<Indexed>,
+    /// Area of each source polygon as the sum of its pieces. The pieces come
+    /// out of boolean ops (valid, consistently oriented), so this stays right
+    /// even for invalid self-intersecting sources, whose own geodesic area
+    /// can come out as the whole sphere.
+    owner_area: Vec<f64>,
 }
 
 impl PieceIndex {
@@ -122,6 +154,27 @@ impl PieceIndex {
                 (i, out)
             })
             .collect();
+        // Self-check: the pieces of a polygon must tile it exactly.
+        let bad: Vec<(usize, f64, f64)> = split
+            .par_iter()
+            .filter(|(_, ps)| ps.len() > 1)
+            .filter_map(|(i, ps)| {
+                let whole = area_m2(&geoms[*i]);
+                let parts: f64 = ps.iter().map(area_m2).sum();
+                ((parts - whole).abs() > 1e-3 * whole.max(1.0)).then_some((*i, whole, parts))
+            })
+            .collect();
+        if !bad.is_empty() {
+            eprintln!(
+                "subdivide: {} invalid source polygon(s) whose own area disagrees with their (valid) pieces; using the pieces' area. e.g. (index, own, pieces) {:?}",
+                bad.len(),
+                &bad[..bad.len().min(5)]
+            );
+        }
+        let mut owner_area = vec![0.0; geoms.len()];
+        for (i, ps) in &split {
+            owner_area[*i] = ps.iter().map(area_m2).sum();
+        }
         let (mut pieces, mut owner) = (Vec::new(), Vec::new());
         for (i, ps) in split {
             for p in ps {
@@ -139,7 +192,7 @@ impl PieceIndex {
                 })
                 .collect(),
         );
-        PieceIndex { pieces, owner, tree }
+        PieceIndex { pieces, owner, tree, owner_area }
     }
 
     /// (owner polygon index, overlap m²) for every piece overlapping `hex`.
@@ -151,7 +204,7 @@ impl PieceIndex {
         self.tree
             .locate_in_envelope_intersecting(query)
             .filter_map(|item| {
-                let overlap = hex.polygon.intersection(&self.pieces[item.index]).geodesic_area_unsigned();
+                let overlap = area_m2(&hex.polygon.intersection(&self.pieces[item.index]));
                 (overlap > 0.0).then_some((self.owner[item.index], overlap))
             })
             .collect()
@@ -171,8 +224,8 @@ pub fn overlay(
     strings: &[&[Option<String>]],
     empty_sum_is_zero: bool,
 ) -> OverlayResult {
-    let areas: Vec<f64> = geoms.par_iter().map(|g| g.clone().orient(Direction::Default).geodesic_area_unsigned()).collect();
     let index = PieceIndex::build(geoms);
+    let areas = &index.owner_area;
 
     struct HexOut {
         numeric: Vec<Option<f64>>,
@@ -262,5 +315,19 @@ pub fn overlay(
 /// polygon carries both its 2020 and 2022 category).
 pub fn hex_overlaps(hexes: &[Hex], geoms: &[MultiPolygon<f64>]) -> Vec<Vec<(usize, f64)>> {
     let index = PieceIndex::build(geoms);
+    if let Ok(dbg) = std::env::var("DATACUBE_DEBUG_HEX") {
+        for hex in hexes.iter().filter(|h| h.id == dbg) {
+            let r = hex.polygon.bounding_rect().unwrap();
+            let q = AABB::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]);
+            for item in index.tree.locate_in_envelope_intersecting(q) {
+                let piece = &index.pieces[item.index];
+                let ov = area_m2(&hex.polygon.intersection(piece));
+                if ov > 0.0 {
+                    eprintln!("debug {dbg}: owner {} piece {} vertices {} overlap {:.1} m2 ({:.3} of hex)",
+                        index.owner[item.index], item.index, geo::CoordsIter::coords_count(piece), ov, ov / hex.area_m2);
+                }
+            }
+        }
+    }
     hexes.par_iter().map(|hex| index.hits(hex)).collect()
 }

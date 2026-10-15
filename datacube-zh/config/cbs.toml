@@ -12,6 +12,16 @@
 # CBS documents a few more in the -9999x range) and become null.
 sentinel_threshold = -99990.0
 
+# Percentages above 100 occur in the CBS source itself (2018-2020: up to 160
+# for percentage_koopwoningen) and are treated as invalid (null).
+percentage_max = 100.0
+
+# Pairs that sum to exactly 100 in every square where both are published
+# (verified on 2023: koop + huur = 100 in all squares). When CBS suppressed
+# one of them (~28k of ~79k squares), it is filled as 100 - the other, so the
+# hex averages of both run over the same squares and still add up to ~100.
+complements = [["percentage_koopwoningen", "percentage_huurwoningen"]]
+
 # String values treated as null before taking the mode.
 null_strings = ["onclassificeerbaar"]
 

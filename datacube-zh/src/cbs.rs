@@ -13,6 +13,9 @@ use crate::overlay::{NumericAgg, NumericInput, overlay};
 #[derive(serde::Deserialize)]
 pub struct CbsConfig {
     pub sentinel_threshold: f64,
+    pub percentage_max: Option<f64>,
+    #[serde(default)]
+    pub complements: Vec<[String; 2]>,
     #[serde(default)]
     pub null_strings: Vec<String>,
     #[serde(default)]
@@ -64,7 +67,7 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
     let n_src = table.geometries.len();
 
     // Canonical names + sentinel/null cleanup.
-    let numeric: HashMap<String, Vec<Option<f64>>> = table
+    let mut numeric: HashMap<String, Vec<Option<f64>>> = table
         .numeric
         .drain()
         .map(|(name, mut vals)| {
@@ -76,6 +79,45 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
             (config.rename.get(&name).cloned().unwrap_or(name), vals)
         })
         .collect();
+    if let Some(max) = config.percentage_max {
+        let mut invalid = 0;
+        for (name, vals) in numeric.iter_mut().filter(|(n, _)| n.starts_with("percentage_")) {
+            for v in vals.iter_mut() {
+                if v.is_some_and(|x| x > max) {
+                    *v = None;
+                    invalid += 1;
+                }
+            }
+            let _ = name;
+        }
+        if invalid > 0 {
+            eprintln!("  {invalid} percentage values > {max} set to null");
+        }
+    }
+    for [a, b] in &config.complements {
+        if let (Some(va), Some(vb)) = (numeric.get(a).cloned(), numeric.get(b).cloned()) {
+            let fill = |x: &Vec<Option<f64>>, y: &Vec<Option<f64>>| -> (Vec<Option<f64>>, usize) {
+                let mut n = 0;
+                let out = x
+                    .iter()
+                    .zip(y)
+                    .map(|(x, y)| match (x, y) {
+                        (None, Some(y)) => {
+                            n += 1;
+                            Some(100.0 - y)
+                        }
+                        _ => *x,
+                    })
+                    .collect();
+                (out, n)
+            };
+            let (fa, na) = fill(&va, &vb);
+            let (fb, nb) = fill(&vb, &va);
+            numeric.insert(a.clone(), fa);
+            numeric.insert(b.clone(), fb);
+            eprintln!("  complement {a}/{b}: filled {na} + {nb} suppressed values");
+        }
+    }
     let strings: HashMap<String, Vec<Option<String>>> = table
         .strings
         .drain()

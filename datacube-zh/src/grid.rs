@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
 use geo::algorithm::orient::{Direction, Orient};
-use geo::{BooleanOps, BoundingRect, Contains, GeodesicArea, Intersects, MultiPolygon, Polygon};
+use geo::{BooleanOps, BoundingRect, Contains, Intersects, MultiPolygon, Polygon};
 use geoplegma::api::{DggrsApi, DggrsApiConfig};
 use geoplegma::types::{BoundingBox, DggrsUid, RefinementLevel, ZoneId};
 use rayon::prelude::*;
 
 use crate::geoparquet::{OutColumn, write_table};
+use crate::overlay::{area_m2, poly_area_m2};
 
 pub const H3_RESOLUTION: i32 = 9;
 
@@ -83,11 +84,11 @@ pub fn build(boundary: &Path, code: &str, out: &Path) -> Result<()> {
             if !province.intersects(&poly) {
                 return None;
             }
-            let area = poly.geodesic_area_unsigned();
+            let area = poly_area_m2(&poly);
             let fraction = if province.contains(&poly) {
                 1.0
             } else {
-                (province.intersection(&poly).geodesic_area_unsigned() / area).min(1.0)
+                (area_m2(&province.intersection(&poly)) / area).min(1.0)
             };
             if fraction <= 0.0 {
                 return None;
@@ -138,8 +139,8 @@ pub fn load_hexes(grid: &Path) -> Result<Vec<Hex>> {
                 .ok_or_else(|| anyhow!("no region for {id}"))?
                 .to_geo_polygon()
                 .orient(Direction::Default);
-            let area_m2 = polygon.geodesic_area_unsigned();
-            Ok(Hex { id: id.to_string(), polygon, area_m2 })
+            let area = poly_area_m2(&polygon);
+            Ok(Hex { id: id.to_string(), polygon, area_m2: area })
         })
         .collect()
 }

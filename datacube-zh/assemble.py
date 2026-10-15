@@ -78,7 +78,8 @@ def load_lgn(data: Path) -> pa.Table | None:
         n = t.num_rows
         cols = {"h3_id": t["h3_id"], "year_int": pa.array([year] * n, pa.int64())}
         for c in classes:
-            cols[c] = t[c] if c in t.column_names else pa.nulls(n, pa.float64())
+            # The export has rounding overshoots up to ~1.007; cap at 1.
+            cols[c] = pc.min_element_wise(t[c], 1.0) if c in t.column_names else pa.nulls(n, pa.float64())
         present = [t[c] for c in classes if c in t.column_names]
         total = present[0]
         for col in present[1:]:

@@ -205,3 +205,38 @@ aggregation, type, warning and non-null share per year.
   (Natuurlijk grasland 4.2%, Kustduinen 1.8%), so it was built on a
   pre-release NBBG version; that area shows up here in Overig agrarisch
   terrein and Open droog/nat natuurlijk terrein.
+
+## Audit (all layers, `out/datacube_zh`)
+
+Checked: (h3_id, year) keys unique and complete (37,818 x 6), no NaN/inf or
+leftover sentinels, ranges per column type, static columns identical across
+years, sums/partitions consistent. Found and fixed:
+
+- **Degenerate-sliver areas.** Boolean-op results can contain near-zero-area
+  slivers whose orientation is numerically undefined; `geo`'s geodesic area
+  then returns the area of the whole Earth (5.1e14 m2). All areas now go
+  through `overlay::area_m2`, which orients and takes the complement of
+  anything above half the Earth. Effect: 4 NBBG hexes (fractions summed to
+  up to 1.97, now 1.000); no other layer changed.
+- **Invalid source polygons** (1 in REV basisnet): their own area is
+  meaningless, so a polygon's area is now the sum of its (valid) pieces.
+- **CBS percentages > 100** in the 2018-2020 source (up to 160): nulled
+  (`percentage_max`).
+- **koop/huur percentages**: always sum to 100 per square, but one of the pair
+  is suppressed in ~28k of ~79k squares, so hex averages ran over different
+  squares (koop + huur median 118). The suppressed one is now filled as
+  100 - the other (`complements`); hex sums are now 98.7-102 (p1-p99).
+- LGN export fractions overshoot 1 by up to 0.007 (rounding): capped at 1.
+
+Known and accepted (documented, not "fixed"):
+- CBS suppression (-99997 = small/confidential counts) makes subtotals run
+  low: men + women = 98.8% and the age groups 95.1% of `aantal_inwoners_sum`.
+  When *every* square touching a hex is suppressed, the `_sum` is null, e.g.
+  `aantal_woningen_sum` in ~4.3k populated hexes.
+- CBS distances/facility counts are only published for squares with
+  residents: ~61% of hexes (mostly non-residential) have no value.
+- Static rasters/vectors have nulls over open water or unmapped areas
+  (groundheight/hitte ~9%, groenklasse ~11%, waterberging ~13%, bodem 27%;
+  natura2000 null = not in a Natura 2000 site).
+- 5 NBBG categories are always 0 in Zuid-Holland (IJsselmeer, Randmeer,
+  Waddenzee, Ooster-/Westerschelde); kept for a stable schema.
