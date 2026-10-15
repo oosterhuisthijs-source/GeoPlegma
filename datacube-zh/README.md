@@ -83,6 +83,7 @@ uv run datacube-zh/assemble.py
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
 | 5b | NBBG land use (41 categories, peiljaren 2020 + 2022) | [CBS NBBG2022 mutatiebestand](https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/) | `hex_overlaps` once, then overlap per category for both years; `config/bbg.toml` | done |
 | 5c | BRP crop groups (15 groups, yearly 2018-2023) | BRP gewaspercelen (RVO via PDOK) | overlay fractions per crop group; `config/brp_groups.toml` | done |
+| 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2022-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -309,3 +310,51 @@ Known and accepted (documented, not "fixed"):
   fractions/percentages in range, NBBG and BRP fractions sum to <= 1 (NL NBBG
   min 0.76 = border hexes partly abroad). Population vs CBS official: NL 2023
   17.14M (CBS-published squares; suppression makes it a few % low).
+
+## TESSERA embeddings (`prepare/tessera_hex.py`, zh only, 2022-2025)
+
+Annual 10 m embeddings from the TESSERA foundation model (Cambridge; Sentinel-1 + Sentinel-2 time
+series, 128 dims), via `geotessera` NPY tiles (v1.1, `cambridge` variant: the default `dclimate` run is
+Zarr-only; never mix variants/versions). Tiles + venv live in `own_data/tessera/` (~9.7 GB per year).
+
+```bash
+python3 -m venv own_data/tessera/.venv
+own_data/tessera/.venv/bin/pip install geotessera scikit-learn lightgbm duckdb geopandas pyarrow h3 rasterio
+for y in 2022 2023 2024 2025; do
+  own_data/tessera/.venv/bin/geotessera download --bbox 3.75,51.65,5.15,52.35 --year $y -f npy -o own_data/tessera/tiles_$y
+done
+own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 2022 2023 2024 2025
+uv run datacube-zh/assemble.py --region zh
+```
+
+- Columns (27): `tessera_pc01..pc16` + `tessera_pixels` (2022-2025); from 2023 the change vs the
+  previous year: `tessera_change{,_agri,_nonagri}_{mean,share}`, `tessera_{land,agri,nonagri}_pixels`,
+  `tessera_change_from`. Before 2022 all null; the nl cube has none.
+- PCA (92% of the hex-mean variance) and the change thresholds (p95 of 2024->2025 pixel distances:
+  all land 0.368, non-agricultural 0.176) are fitted once and saved in `own_data/tessera/pca_threshold.npz`,
+  so new years project onto the same axes. `--refit` refits (and changes every year's values).
+- Change = per-pixel cosine distance between consecutive years; water (NBBG 2022 classes 70-83) excluded;
+  `_agri` = pixels in a BRP parcel in either year, `_nonagri` = the rest.
+- Hex assignment uses the `h3` library (same res-9 cells as geoplegma's h3o), not `raster.rs`; fine for a
+  trial, the production route would be a geoplegma raster path.
+- 21 North Sea hexes off Hoek van Holland stay null (TESSERA has no tile there).
+
+What it shows (validated against BRP, NBBG, CBS):
+- PCs are land use without labels: PC1 grassland vs water/dunes, PC2 built-up vs sea, PC3 arable
+  (r 0.83), PC4 industry/greenhouses vs forest. PC1-3 are stable across years (province year offset
+  <= 0.07 SD, per hex r 0.86-0.99); PC5/6/8 carry year effects (0.2-0.6 SD), so compare years via the
+  change columns or after subtracting each year's province mean. Use ~PC1-8 for similarity/SOM.
+- All-land change is dominated by agriculture (crop rotation, grass -> maize/potatoes; Spearman +0.69
+  with arable share, +0.66 with BRP crop-group shifts). That is why change is split agri / non-agri.
+- Non-agricultural change finds construction: its top hexes are almost all NBBG `Bouwterrein`
+  (Maasvlakte 2, Vlaardingen, Maassluis, Ridderkerk, Waddinxveen, Hoeksche Waard), plus recurring
+  Noordwijk dune hexes and one Goeree wetland hex (not yet explained; check the aerial photo).
+- It is *not* a housing index: over 2022->2024 hexes with 50+ new homes change ~6x more than stable
+  ones but the correlation is weak; over one year (2024->2025) there is no housing signal.
+- Hotspots persist: adjacent pairs Spearman 0.63-0.68, 25 hexes in the top 200 of all three pairs.
+  Province share above the threshold is stable (~5% all land, 11-12% agri); non-agri rises
+  3.3% -> 4.1% -> 5.0% (real or input drift - unresolved).
+
+Not run: `prepare/tessera_grass.py`, a pilot that splits grassland into agricultural vs natural
+(BRP 265/266 vs 331/332/1926 labels, LightGBM, spatial CV). Smoke test on 4 coastal tiles gave parcel
+AUC 0.95. 2022 tiles for it are downloaded.

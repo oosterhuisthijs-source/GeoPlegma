@@ -139,10 +139,39 @@ def load_lbm(work: Path, year: int) -> pa.Table | None:
     return t.append_column("lbm_source_year", pa.array([src] * t.num_rows, pa.int64()))
 
 
+def tessera_schema(work: Path) -> pa.Schema | None:
+    """Union schema of all TESSERA layers (the first year has no change columns), or None if there are none."""
+    files = sorted(glob.glob(str(work / "layers/tessera_*.parquet")))
+    if not files:
+        return None
+    fields = {}
+    for f in files:
+        for field in pq.read_schema(f):
+            fields.setdefault(field.name, field)
+    fields["h3_id"] = pa.field("h3_id", pa.string())  # pandas writes large_string; the other layers use string
+    return pa.schema(list(fields.values()))
+
+
+def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.ChunkedArray) -> pa.Table | None:
+    """TESSERA PCA embedding + year-on-year change (prepare/tessera_hex.py). Years and columns that
+    don't exist (before 2022; change columns in the first year) are null, so the cube schema - which
+    is taken from the first year, 2018 - still carries them."""
+    if schema is None:
+        return None
+    f = work / f"layers/tessera_{year}.parquet"
+    t = pq.read_table(f) if f.exists() else pa.table({"h3_id": h3_ids})
+    for field in schema:
+        if field.name not in t.column_names:
+            t = t.append_column(field, pa.nulls(t.num_rows, field.type))
+    t = t.select(schema.names).cast(schema)
+    return t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64()))
+
+
 def build_year(work: Path, year: int, base: pa.Table, lgn: pa.Table | None) -> pa.Table:
-    """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG (+ LGN)."""
+    """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG + wb + lbm + TESSERA (+ LGN)."""
     cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
-    for layer in (load_brp(work, year), load_bbg(work, year), load_wb(work, year), load_lbm(work, year)):
+    tess = load_tessera(work, year, tessera_schema(work), base["h3_id"])
+    for layer in (load_brp(work, year), load_bbg(work, year), load_wb(work, year), load_lbm(work, year), tess):
         if layer is not None:
             cube = left_join(cube, layer, ["h3_id", "year_int"])
     if lgn is not None:
@@ -276,6 +305,26 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                 "lbm_source_year": "meetjaar van de waarden (tweejaarlijks; oneven jaren = vorige meting)",
                 "lbm_score": "totaalscore leefbaarheid (absoluut), oppervlaktegewogen gemiddelde van de 100m-cellen",
             }.get(name, "afwijking t.o.v. het landelijk gemiddelde (score/dimensie), oppervlaktegewogen gemiddelde van de 100m-cellen")
+        elif name.startswith("tessera_"):
+            src = ("TESSERA v1.1 (cambridge variant) annual 10 m embeddings, Sentinel-1/2 (Cambridge, geotessera); "
+                   "prepare/tessera_hex.py, PCA + thresholds fitted on 2024+2025 (own_data/tessera/pca_threshold.npz)")
+            unit = "0-1" if name.endswith("_share") else None
+            if name.startswith("tessera_pc"):
+                agg = ("component van het celgemiddelde embedding (alle 10m-pixels in de cel) op een vaste PCA; "
+                       "PC1-3 vergelijkbaar tussen jaren, PC5/6/8 hebben jaareffecten")
+            else:
+                agg = {
+                    "tessera_pixels": "aantal 10m-pixels in de cel (pixelcentrum)",
+                    "tessera_land_pixels": "landpixels gebruikt voor de verandering (water = NBBG 2022 klassen 70-83)",
+                    "tessera_agri_pixels": "landpixels in een BRP-perceel (in een van beide jaren)",
+                    "tessera_nonagri_pixels": "landpixels buiten BRP-percelen",
+                    "tessera_change_from": "basisjaar van de vergelijking",
+                }.get(name)
+                if agg is None:
+                    part = ("landbouw (BRP-percelen; vooral gewasrotatie)" if "_agri_" in name
+                            else "niet-landbouw (bebouwing, natuur, infrastructuur)" if "_nonagri_" in name else "alle land")
+                    agg = (f"gemiddelde cosinusafstand per pixel t.o.v. het vorige jaar, {part}" if name.endswith("_mean")
+                           else f"aandeel pixels boven een vaste drempel (p95 van 2024->2025), {part}")
         elif name.startswith("brp_"):
             src = "BRP gewaspercelen (RVO via PDOK), definitief, per jaar; gewascode -> gewasgroep in config/brp_groups.toml"
             unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
