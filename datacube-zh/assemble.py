@@ -102,6 +102,15 @@ def load_lgn(data: Path) -> pa.Table | None:
 BBG_YEAR_FOR = {2018: 2020, 2019: 2020, 2020: 2020, 2021: 2020, 2022: 2022, 2023: 2022}
 
 
+def load_brp(work: Path) -> pa.Table | None:
+    """BRP crop-group fractions per hex and year (datacube-zh brp)."""
+    files = [work / f"layers/brp_{y}.parquet" for y in YEARS]
+    if not all(f.exists() for f in files):
+        log("brp: layer files missing, skipped")
+        return None
+    return pa.concat_tables([pq.read_table(f) for f in files])
+
+
 def load_bbg(work: Path) -> pa.Table | None:
     """CBS Nieuw Bestand Bodemgebruik fractions per hex (datacube-zh bbg)."""
     parts = []
@@ -129,6 +138,9 @@ def build_real(work: Path) -> pa.Table:
     cbs_all = pa.concat_tables(years, promote_options="default")
 
     cube = left_join(cbs_all, base, "h3_id")
+    brp = load_brp(work)
+    if brp is not None:
+        cube = left_join(cube, brp, ["h3_id", "year_int"])
     bbg = load_bbg(work)
     if bbg is not None:
         cube = left_join(cube, bbg, ["h3_id", "year_int"])
@@ -234,7 +246,14 @@ def build_manifest(real: pa.Table, config_dir: Path) -> dict:
     for name in real.column_names:
         col = real[name]
         src, unit, agg = info.get(name, (None, None, None))
-        if name.startswith("bbg_"):
+        if name.startswith("brp_"):
+            src = "BRP gewaspercelen (RVO via PDOK), definitief, per jaar; gewascode -> gewasgroep in config/brp_groups.toml"
+            unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
+            agg = {
+                "brp_coverage": "aandeel van de cel met geregistreerde landbouwpercelen (excl. landschapselementen)",
+                "brp_dominant": "gewasgroep met het grootste oppervlak in de cel",
+            }.get(name, "aandeel van het celoppervlak met deze gewasgroep (0 = geen percelen)")
+        elif name.startswith("bbg_"):
             src = "CBS Nieuw Bestand Bodemgebruik, mutatiebestand NBBG2022 v1 (peiljaren 2020 en 2022)"
             unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None
             agg = {

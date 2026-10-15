@@ -55,6 +55,10 @@ ogr2ogr -f Parquet own_data/work/bbg/nbbg_undissolved.parquet \
   -t_srs OGC:CRS84 -dim XY -nlt MULTIPOLYGON -lco GEOMETRY_ENCODING=WKB -lco COMPRESSION=ZSTD
 ./target/release/datacube-zh bbg                   # -> work/layers/bbg_2020.parquet, bbg_2022.parquet (~5 s)
 
+# 4c. BRP gewaspercelen (national yearly downloads; 2018-19 FileGDB, 2020+ GeoPackage)
+datacube-zh/prepare/brp.py --brp-dir <dir with <year>/ downloads>   # -> work/brp/, config/brp_groups.toml
+./target/release/datacube-zh brp                   # -> work/layers/brp_<year>.parquet (~17 s)
+
 # 5. assemble -> out/datacube_zh (real values, Delta + parquet)
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
 uv run datacube-zh/assemble.py
@@ -70,6 +74,7 @@ uv run datacube-zh/assemble.py
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
 | 5b | NBBG land use (41 categories, peiljaren 2020 + 2022) | [CBS NBBG2022 mutatiebestand](https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/) | `hex_overlaps` once, then overlap per category for both years; `config/bbg.toml` | done |
+| 5c | BRP crop groups (15 groups, yearly 2018-2023) | BRP gewaspercelen (RVO via PDOK) | overlay fractions per crop group; `config/brp_groups.toml` | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -240,3 +245,22 @@ Known and accepted (documented, not "fixed"):
   natura2000 null = not in a Natura 2000 site).
 - 5 NBBG categories are always 0 in Zuid-Holland (IJsselmeer, Randmeer,
   Waddenzee, Ooster-/Westerschelde); kept for a stable schema.
+
+## BRP crop groups (`datacube-zh brp`)
+
+- Source: BRP gewaspercelen definitief, 2018-2023 (national downloads,
+  2018-2019 FileGDB with different field names, 2020+ GeoPackage; normalised
+  by `prepare/brp.py`). "Landschapselement" parcels (only registered from
+  ~2020) are excluded so years compare.
+- ~320 gewascodes -> 15 crop groups by keyword rules in `prepare/brp.py`,
+  written to `config/brp_groups.toml` with the area per code for review.
+- Output per year: `brp_<group>_fraction` (0 where there are no parcels),
+  `brp_coverage` (farmed share of the hex), `brp_dominant`.
+- 2023 has ~40% more parcels (new GLB, parcels split) but the same area.
+- Validation: vs the LGN stopgap 2021 (LGN takes its crops from BRP):
+  aardappelen r 0.999, granen 0.996, bieten 0.993, mais 0.990, bloembollen
+  0.974, grasland 0.946, fruit vs LGN fruitkwekerijen 0.93. Farmed share vs
+  NBBG agricultural categories r 0.86 (BRP 35% vs NBBG 42% of the province;
+  NBBG also counts farmyards and ditches).
+- NBBG (land use) + BRP (crops, yearly) replace LGN for national use; LGN
+  stays in as the ZH-only stopgap.

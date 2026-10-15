@@ -6,6 +6,7 @@
 
 mod admin;
 mod bbg;
+mod brp;
 mod cbs;
 mod geoparquet;
 mod grid;
@@ -53,6 +54,13 @@ enum Command {
         #[arg(long, default_value = "datacube-zh/config/bbg.toml")]
         config: PathBuf,
     },
+    /// BRP gewaspercelen: per-hex crop-group fractions, per year.
+    Brp {
+        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023])]
+        years: Vec<i64>,
+        #[arg(long, default_value = "datacube-zh/config/brp_groups.toml")]
+        config: PathBuf,
+    },
     /// Aggregate the static raster/vector layers from config/static.toml.
     Static {
         #[arg(long, default_value = "datacube-zh/config/static.toml")]
@@ -95,6 +103,19 @@ fn main() -> Result<()> {
             let config = bbg::BbgConfig::load(&config)?;
             let hexes = grid::load_hexes(&grid_path)?;
             bbg::run(&config, &hexes, &work.join("bbg/nbbg_undissolved.parquet"), &work.join("layers"))?;
+        }
+        Command::Brp { years, config } => {
+            let config = brp::BrpConfig::load(&config)?;
+            let hexes = grid::load_hexes(&grid_path)?;
+            for year in years {
+                brp::run(
+                    &config,
+                    &hexes,
+                    &work.join(format!("brp/brp_{year}.parquet")),
+                    year,
+                    &work.join(format!("layers/brp_{year}.parquet")),
+                )?;
+            }
         }
         Command::Static { config, only } => {
             let config = static_layers::StaticConfig::load(&config)?;

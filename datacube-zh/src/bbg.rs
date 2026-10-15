@@ -36,6 +36,37 @@ pub fn slug(label: &str) -> String {
     s.split('_').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("_")
 }
 
+/// Per-class area fractions of every hex: `fractions[class][hex]`, plus the
+/// covered share of each hex (sum over classes). `class_of(polygon)` maps a
+/// source polygon to a class index (None = ignore). Shared by NBBG and BRP.
+pub fn class_fractions(
+    hexes: &[Hex],
+    overlaps: &[Vec<(usize, f64)>],
+    n_classes: usize,
+    class_of: impl Fn(usize) -> Option<usize>,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let mut fractions = vec![vec![0.0; hexes.len()]; n_classes];
+    for (h, (hex, hits)) in hexes.iter().zip(overlaps).enumerate() {
+        for &(i, overlap) in hits {
+            if let Some(k) = class_of(i) {
+                fractions[k][h] += overlap / hex.area_m2;
+            }
+        }
+    }
+    let coverage = (0..hexes.len()).map(|h| fractions.iter().map(|f| f[h]).sum::<f64>().min(1.0)).collect();
+    (fractions, coverage)
+}
+
+/// Name of the class with the largest fraction per hex (None if all zero).
+pub fn dominant(fractions: &[Vec<f64>], labels: &[String], n_hexes: usize) -> Vec<Option<String>> {
+    (0..n_hexes)
+        .map(|h| {
+            let (k, f) = fractions.iter().enumerate().map(|(k, f)| (k, f[h])).max_by(|a, b| a.1.total_cmp(&b.1))?;
+            (f > 0.0).then(|| labels[k].clone())
+        })
+        .collect()
+}
+
 pub fn run(config: &BbgConfig, hexes: &[Hex], input: &Path, out_dir: &Path) -> Result<()> {
     let t0 = Instant::now();
     let table = read_polygon_table(input)?;
@@ -58,33 +89,23 @@ pub fn run(config: &BbgConfig, hexes: &[Hex], input: &Path, out_dir: &Path) -> R
             .numeric
             .get(column)
             .ok_or_else(|| anyhow!("{} has no column {column}", input.display()))?;
-        let mut fractions: Vec<Vec<f64>> = vec![vec![0.0; hexes.len()]; codes.len()];
         let mut unknown = 0usize;
-        for (h, (hex, hits)) in hexes.iter().zip(&overlaps).enumerate() {
-            for &(i, overlap) in hits {
-                let Some(code) = src[i].map(|c| c as i64) else { continue };
-                match codes.iter().position(|(c, _)| *c == code) {
-                    Some(k) => fractions[k][h] += overlap / hex.area_m2,
-                    None => unknown += 1,
-                }
+        for &(i, _) in overlaps.iter().flatten() {
+            if src[i].is_some_and(|c| !codes.iter().any(|(k, _)| *k == c as i64)) {
+                unknown += 1;
             }
         }
-        let coverage: Vec<f64> = (0..hexes.len()).map(|h| fractions.iter().map(|f| f[h]).sum()).collect();
-        let dominant: Vec<Option<String>> = (0..hexes.len())
-            .map(|h| {
-                let (k, f) = fractions
-                    .iter()
-                    .enumerate()
-                    .map(|(k, f)| (k, f[h]))
-                    .max_by(|a, b| a.1.total_cmp(&b.1))?;
-                (f > 0.0).then(|| codes[k].1.clone())
-            })
-            .collect();
+        let (fractions, coverage) = class_fractions(hexes, &overlaps, codes.len(), |i| {
+            let c = src[i]? as i64;
+            codes.iter().position(|(k, _)| *k == c)
+        });
+        let labels: Vec<String> = codes.iter().map(|(_, l)| l.clone()).collect();
+        let dominant = dominant(&fractions, &labels, hexes.len());
 
         let mut columns = vec![
             ("h3_id".to_string(), OutColumn::Str(hexes.iter().map(|h| Some(h.id.clone())).collect())),
             ("bbg_source_year".to_string(), OutColumn::I64(vec![Some(*year); hexes.len()])),
-            ("bbg_coverage".to_string(), OutColumn::F64(coverage.iter().map(|&c| Some(c.min(1.0))).collect())),
+            ("bbg_coverage".to_string(), OutColumn::F64(coverage.iter().map(|&c| Some(c)).collect())),
             ("bbg_dominant".to_string(), OutColumn::Str(dominant)),
         ];
         for ((_, label), f) in codes.iter().zip(fractions) {
