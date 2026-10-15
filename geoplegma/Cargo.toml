@@ -37,8 +37,12 @@ serde = ["dep:serde"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+geojson = { version = "1.0.0", features = ["geo-types"] }
 # Direct FFI access in tests/hex9.rs to exercise libhex9's enumeration ceiling.
 hex9-sys = { git = "https://github.com/MrBenGriffin/libhex9", tag = "v2.1.0" }
+parquet = { version = "59.1.0", default-features = false, features = ["snap", "zstd"] }
+rstar = "0.13.0"
+serde_json = "1.0.151"
 
 [[bench]]
 name = "dggrs"
@@ -47,3 +51,19 @@ harness = false
 [[example]]
 name = "basic"
 path = "example/basic.rs"
+
+[[example]]
+name = "own_data_h3_coverage"
+path = "example/own_data_h3_coverage.rs"
+
+[[example]]
+name = "own_data_cbs_overlay"
+path = "example/own_data_cbs_overlay.rs"
+
+[[example]]
+name = "own_data_province_overlay"
+path = "example/own_data_province_overlay.rs"
+
+[[example]]
+name = "own_data_province_overlay_allcols"
+path = "example/own_data_province_overlay_allcols.rs"

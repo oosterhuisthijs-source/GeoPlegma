@@ -5,3 +5,9 @@ Cargo.lock
 #src/main.rs
 
 docs/node_modules/
+
+# own_data/: large fetched/derived datasets stay local; only scripts, column schemas and the small sample are tracked
+own_data/*
+!own_data/*.py
+!own_data/*.columns.json
+!own_data/cbs_vk100_sample.geojson

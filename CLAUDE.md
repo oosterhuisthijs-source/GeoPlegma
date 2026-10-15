@@ -1,0 +1,286 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+GeoPlegma is a Rust workspace that provides a common abstraction layer over multiple Discrete Global
+Grid Reference Systems (DGGRS) — DGGRID, H3, DGGAL, and a native Hex9/H9 backend — largely conformant
+to the OGC API for DGGS. The goal is one consistent API (zones from a bbox/point/parent/id, zone
+counts, refinement levels) regardless of which underlying grid engine is doing the work.
+
+## Workspace layout
+
+Workspace members (see root `Cargo.toml`): `geoplegma`, `gp-bindings/js`, `gp-encoding`, `gp-proj`,
+`viewer-3d/src-tauri`. `tests/`, `diagrams/`, and `docs/` are explicitly excluded from the workspace.
+
+- **`geoplegma`** — the core crate: the `DggrsApi` port trait, the adapter implementations for each
+  backend, and the factory that dispatches between them. This is what everything else depends on.
+- **`gp-proj`** — standalone geometry/projection library: polyhedron definitions (icosahedron, etc.),
+  ellipsoid/authalic-latitude math, and projections (e.g. vertex-great-circle / "slice and dice") that
+  map geographic coordinates to polyhedron faces and back. Independent of the DGGRS abstraction; has a
+  legacy `src/old/` module kept for reference.
+- **`gp-encoding`** — library + CLI (`gp-encoding` binary) for encoding GDAL-readable rasters into a
+  Zarr-backed, DGGRS-indexed internal format, plus querying/stats/pyramid-building over that format.
+  Depends on `geoplegma` (with the `serde` feature) and `gdal` (built with `bindgen`, needs
+  `libgdal-dev`).
+- **`gp-bindings/js`** — napi-rs Node.js native bindings (crate `gp-bindings-js`, cdylib) exposing
+  `geoplegma` to JS. Depends on `geoplegma` **by path**, not git — see "hex9-sys / links constraint"
+  below for why that matters.
+- **`viewer-3d/src-tauri`** — Tauri desktop app (Cargo package name `visualization-app`) that reads
+  `gp-encoding` output and renders it with deck.gl. Has its own JS/pnpm toolchain; excluded from
+  workspace-wide `cargo clippy`/`cargo test` invocations in CI because of that.
+- **`gp-dggrs`** — an early-stage stub, **not a workspace member**. Its `Cargo.toml` currently depends
+  on itself (`gp-dggrs = { path = "../gp-dggrs/" }`) and `api.rs` is unfinished. Treat as WIP/unwired;
+  don't assume it builds.
+- **`gp-test-fixtures`** — just a home for static JSON/GeoJSON fixtures used in tests.
+- **`tests/`** — workspace-wide integration tests kept outside any single crate. Deliberately excluded
+  from the `[workspace]` (per its README, the intent is to test across all members without gluing the
+  test crate to one of them, but the final home for this — root `tests/` vs. a proper member like
+  `gp-tests` — is still an open question).
+
+## Build / test / lint
+
+Build a single crate (works from repo root or the crate dir):
+```bash
+cargo build -p geoplegma
+```
+
+Run the whole workspace's tests (this is what CI does, `viewer-3d`'s package excluded since it needs
+the Tauri/node toolchain):
+```bash
+cargo test --workspace --exclude visualization-app
+```
+
+Run one test / filter by name:
+```bash
+cargo test -p geoplegma zone_count
+```
+
+`cargo fmt --check` and `cargo clippy --workspace --exclude visualization-app --all-targets -- -D
+warnings` run in CI but are currently **advisory only** (`continue-on-error: true`) — the codebase
+predates them. Don't treat clippy/fmt failures as build breakage; do keep new code clean regardless.
+
+`cargo check` or [`bacon`](https://dystroy.org/bacon/) are faster than a full build for iterating.
+
+### External / system dependencies needed to build everything
+
+- **DGGRID**: the `dggrid` executable must be compiled and either on `$PATH` or referenced explicitly
+  — the `dggrid` adapter shells out to it. CI does *not* install it, so DGGRID-dependent tests are
+  skipped there (see the `--skip` list in `.github/workflows/ci.yml`): parent/child and zone-count
+  equivalence tests for `igeo7`/`isea3h`. If you're changing the DGGRID adapter, run those manually
+  with a local DGGRID install.
+- **`libgdal-dev`**: needed for `gp-encoding`'s `gdal` dependency (bindgen feature).
+- **`cmake` + `libclang-dev`**: needed because `geoplegma`'s `hex9-sys` dependency builds the libhex9 C
+  core via cmake and generates bindings with bindgen.
+
+### hex9-sys / `links` constraint
+
+`hex9-sys` (git dependency, pinned by tag, e.g. `v2.1.0`) declares `links = "hex9"`, so **only one
+version of it can exist in a single dependency graph**. This is why `gp-bindings/js` depends on
+`geoplegma` by **path** rather than git: a git dependency on `geoplegma`'s master would pull in a
+second, independently-resolved copy of `hex9-sys`, and two versions can't coexist — it breaks the
+whole workspace resolve. If you ever touch the `hex9-sys` pin in `geoplegma/Cargo.toml`, check
+`gp-bindings/js` still resolves to the same one.
+
+### Examples
+
+```bash
+cd geoplegma && cargo run --example basic
+cd gp-proj && cargo run --example basic   # and example/polygon.rs
+```
+
+### gp-encoding CLI
+
+```bash
+cargo run -p gp-encoding -- convert --input input.tif --output output.zarr --dggrs H3 --report
+cargo run -p gp-encoding -- add-level --store output.zarr --target-level 5
+cargo run -p gp-encoding -- stats --store output.zarr
+cargo run -p gp-encoding -- --help
+```
+
+Benchmarks read input files from `gp-encoding/benches/files` and write reports to
+`gp-encoding/benches/bench_out`:
+```bash
+cargo bench --bench convert   # configure DGGRS_TYPES / BANDS constants in benches/convert.rs
+```
+
+### viewer-3d (Tauri app)
+
+```bash
+cd viewer-3d && pnpm install && pnpm tauri dev    # or `pnpm tauri build`
+```
+
+## Architecture: the DGGRS port/adapter pattern
+
+`geoplegma` is structured as ports-and-adapters around one trait:
+
+- **Port**: `DggrsApi` (`geoplegma/src/api.rs`) — the interface every backend implements:
+  `zones_from_bbox`, `zone_from_point`, `zones_from_parent`, `primary_parent_from_zone`,
+  `zone_from_id`, `zone_count`, plus min/max/default refinement level and relative depth accessors.
+  Every method except the level/depth accessors takes an `Option<DggrsApiConfig>` controlling which
+  optional fields (`region`, `center`, `vertex_count`, `children`, `neighbors`, `area_sqm`, `densify`)
+  get populated on the returned `Zones` — all default to `true`.
+- **Adapters**: `geoplegma/src/adapters/{dggrid,dggal,h3o,hex9}/` — one module per backend, each
+  implementing `DggrsApi` for the DGGRS variants that engine supports. `dggrid` shells out to the
+  external DGGRID binary; `dggal` wraps the `dggal-rust` crate; `h3o` wraps the `h3o` crate; `hex9`
+  wraps `hex9-sys` FFI bindings to libhex9. There is also an `adapters/rhealpix/` module in the tree
+  that is **not** declared in `adapters/mod.rs` — it's unwired/unused; don't assume it's reachable.
+- **Factory**: `geoplegma/src/factory.rs::get(DggrsUid) -> Result<Arc<dyn DggrsApi>, FactoryError>`
+  matches first on `DggrsImplementation` (which tool backs the grid), then on the specific `DggrsUid`,
+  and constructs the right adapter. `factory::registry()` exposes the static `DGGRS_SPECS` table for
+  discovery. Adding a new grid to an existing backend usually means: add a `DggrsUid` variant + entry
+  in `constants::DGGRS_SPECS` (`types.rs`/`constants.rs`), wire it into `factory::get`, and implement/
+  extend the adapter.
+- **Registry**: `geoplegma/src/constants.rs::DGGRS_SPECS` — a static array of `DggrsSpec` (one per
+  `DggrsUid`) carrying aperture, min/max/default refinement level, and max/default relative depth.
+  `DggrsUid::spec()` indexes into it via a hand-maintained `idx()` match — keep `idx()`, the enum
+  variant list, and the `DGGRS_SPECS` array in sync when adding/removing a UID.
+- **Core types** (`geoplegma/src/types.rs`): `Point`, `Region`/`BoundingBox` (plain lat/lon, convert to
+  `geo` primitives via `to_coord`/`to_geo_polygon`), `Zone`/`Zones` (the output shape, all fields
+  gated by `DggrsApiConfig`), `ZoneId` (a `StrId | HexId | IntId` enum — `FromStr` sniffs
+  decimal-first, then hex-looking, then falls back to string), and `RefinementLevel`/`RelativeDepth`
+  (newtypes over `i32` that reject negative values at construction — always go through `::new`/
+  `TryFrom`, never construct with a raw `i32` in adapter code except via the `_const` constructors
+  used for static specs).
+- **Errors** (`geoplegma/src/error/`): one `thiserror` enum per backend (`dggal.rs`, `dggrid.rs`,
+  `h3o.rs`, `hex9.rs`, `factory.rs`, `port.rs`) all folded into the top-level `DggrsError` in
+  `error/mod.rs` via `#[from]`. Add backend-specific error variants in that backend's file, not in
+  `mod.rs`.
+
+Hex9 is the one backend with materially different semantics worth knowing before touching its tests
+(`geoplegma/tests/hex9.rs`): refinement levels run 0..=30 with 12 well-defined L0 base hexagons; the
+*addressing* API (`zone_from_point`, `zone_from_id`, `primary_parent_from_zone`) works across that
+whole range, but the *enumeration* API (`zones_from_bbox`, `zones_from_parent`) goes through
+libhex9's `hex9_grid_create`, which the currently-linked build restricts to layers 1..29 — L0 and the
+deepest layers can't be enumerated. `to_zones` never populates `children` for Hex9.
+
+## `own_data/` — CBS overlay reproduction & benchmarking (active investigation)
+
+**Status: nothing here is committed yet** (`own_data/`, `CLAUDE.md`, the new `geoplegma/example/own_data_*.rs`
+files, and the `geoplegma/Cargo.toml` dev-dependency additions are all untracked/modified — run `git status`
+before doing anything destructive). This is a personal research thread, not a repo feature; pick it back up
+by reading this section, not by re-deriving context.
+
+### What `own_data/` is
+
+`own_data/volledige_tijdreeks_met_namen.parquet` is a **personally-built** dataset (not part of this repo's
+normal build), combining CBS vierkantstatistieken (100m population/housing grid), LGN land-use, and some
+NationaalGeoregister layers, pre-aggregated to H3 resolution 9 for the province of Zuid-Holland, for years
+2018-2023 (37,614 unique hexes, 225,684 cell-year rows). Every `aantal_*`/`gemiddeld(e)_*` column is
+**min-max normalized to 0-255 per column across all years combined** (confirmed: exact min 0.0 / max 255.0).
+This is *separate* from the real production pipeline that generates the underlying CBS/LGN consumption
+tables — see "The real pipeline" below.
+
+### What was built (all in `geoplegma/example/`, all runnable via `cargo run --release --example <name>`)
+
+- **`own_data_h3_coverage.rs`** — hydrates every dataset hex's polygon via `H3Impl::zone_from_id`, writes
+  `own_data/h3_cells_hydrated.geojson`, and diffs against `zones_from_bbox` over the dataset's bounding
+  rectangle to find "gap" cells (`own_data/h3_coverage_gap_centers.geojson`). Confirmed: real gaps here are
+  mostly the bbox rectangle spilling into the sea/neighbouring provinces, not real data holes — the real
+  pipeline clips to the actual province polygon instead of a bbox (see below).
+- **`own_data_cbs_overlay.rs`** — the core method-validation tool: hydrates 5 hand-picked hexes, loads a
+  small CBS 100m-square sample (`own_data/cbs_vk100_sample.geojson`, fetched from PDOK's OGC API, see the
+  file's doc comment for the exact curl), does a real polygon intersection (`geo::BooleanOps`) + area-weight
+  overlay, and reports the **scale factor** vs. the stored (normalized) value. Also where a real bug was
+  found and fixed: PDOK returns clockwise-wound rings, which makes `geo::GeodesicArea::geodesic_area_unsigned()`
+  silently return the area of the sphere's *other side* (~5.1e14 m²) unless you `.orient(Direction::Default)`
+  first — do this to any polygon parsed from PDOK GeoJSON before computing area.
+- **`own_data_province_overlay.rs`** — full-province, single-year, 2-column (`aantal_inwoners`/`aantal_woningen`)
+  benchmark: R-tree (`rstar`) spatial index over CBS squares, hex hydration + overlay for all 37,614 hexes.
+  Also has the partition-of-unity correctness check (per-CBS-square total claimed weight, should be ≤1.0)
+  and a mass-conservation check (raw vs. apportioned totals). Measured: ~48ms H3 hydration + ~800ms overlay
+  for all hexes, one year.
+- **`own_data_province_overlay_allcols.rs`** — same thing but all 135 numeric CBS columns at once (weight
+  computed once per hex/square pair, reused across every column — this is why going 2→135 columns cost
+  ~0ms extra: ~770ms either way). Exports a per-hex ndjson (geometry + a few highlight columns + coverage)
+  for visualization.
+- **`own_data/fetch_cbs_full_province.py`** / **`fetch_cbs_full_province_allcols.py`** — tiled/parallel PDOK
+  fetchers (province bbox split into an 8x8 grid, fetched concurrently, since PDOK's OGC API caps `limit` at
+  1000/page with cursor pagination). ~75k squares in ~23s per year. `_allcols` variant keeps all 135 numeric
+  columns (writes a sidecar `*.columns.json` with the positional column order) instead of just 2.
+- All 6 years (2018-2023) have been fetched both ways: `own_data/cbs_vk100_zuidholland_<year>.ndjson` (2 cols)
+  and `..._<year>_allcols.ndjson` + `..._allcols.columns.json` (135 cols).
+
+### The validated finding: what `own_data`'s `_sum` columns actually contain
+
+`own_data`'s `aantal_inwoners_sum`/`aantal_woningen_sum` are **not** a naive area-weighted apportioned total —
+replicating the *actual* production formula (see next section) against real fetched CBS data reproduces the
+stored values to a clean, consistent **~1.20x** (inwoners) / **~0.58x** (woningen) scale factor across every
+hex tested (vs. ~10.6x/~5.1x for a mathematically "correct" apportioned sum). The residual constant factor is
+plausibly `own_data`'s own subsequent 0-255 normalization interacting with the pipeline's actual (buggy, see
+below) formula — not fully pinned down, and not worth chasing further unless it becomes load-bearing again.
+
+### The real production pipeline: `/home/thijsradijs/datacube` (separate repo, has its own CLAUDE.md)
+
+This is the actual Databricks/PySpark/Sedona pipeline that produces the CBS/LGN consumption tables `own_data`
+is presumably derived from. Two concrete, evidenced findings from reading it (not yet reported upstream or
+fixed):
+
+1. **`cbs_integration_to_consumption.py`'s `_sum` aggregation is actually a coverage-weighted average, not a
+   sum.** `compute_hex_weights` computes one `coverage_fraction = intersect_area / hex_area` per
+   (square, hex) pair and `aggregate_by_h3` feeds that same column into both `area_weighted_sum_expr` and
+   `area_weighted_average_expr` — correct for average (weights sum to ~1 across a hex), wrong for sum (needs
+   `intersect_area / square_area` instead, so contributions from multiple squares actually add up). Proof
+   this is a real, known bug pattern: `geodata_to_h3_processing/geodata_integration_to_consumption.py`
+   already found and fixed this *exact* mistake (comment: "The previous code divided by `hex_area`... instead
+   of `area`... for a polygon spanning multiple hexes, that neither summed to the original value nor
+   represented a meaningful per-hex fraction") — the fix was never backported to `cbs`.
+2. **`lgn_integration_to_consumption.py`'s spatial join against the province H3 grid is missing the
+   `/*+ BROADCAST(h) */` hint** that `geodata_to_h3_processing` proved necessary for the identical join
+   pattern (comment there: without it, Sedona can fall back to a non-indexed nested-loop join, "which is why
+   some layers ran 20x slower than others"). `datacube_common/data_check.py::check_area_coverage` and
+   `geodata_to_h3_processing` both have the hint; `lgn`'s main production join does not.
+
+### Artifacts published this session (private, viewable at claude.ai/code/artifacts)
+
+- 2022-only `aantal_inwoners` choropleth of all 37,614 hexes (hover for exact values):
+  `https://claude.ai/code/artifact/59ba16b0-057e-41a1-afe7-f9485a2f30cc`
+- 6-year (2018-2023) x 4-metric (`aantal_inwoners`/`aantal_woningen`/`gemiddelde_woz_waarde_woning`/
+  `gemiddeld_gasverbruik_woning`) interactive version with year/metric pickers:
+  `https://claude.ai/code/artifact/47edc339-1fa0-4fbc-bb10-a8aa27746dc0`
+- Both built from `own_data/artifact_build/*.html` (source kept there for re-publishing) using a packed
+  binary payload embedded in the page (not raw GeoJSON — keeps an ~8MB, 6-year, 4-metric page instead of
+  ~50MB+), decoded client-side into typed arrays.
+
+### Environment gotchas hit while building this (this machine specifically)
+
+- `hex9-sys` needs `cmake` (not installed by default here) — fixed with `pip install --user cmake`
+  (`~/.local/bin` is already on `$PATH`).
+- `dggal-rust`'s bundled C build needs a **static** `libz.a`, which Fedora's `zlib-devel` doesn't ship
+  (Ubuntu's `zlib1g-dev` does, which is why CI never hit this). Worked around by pointing `LIBRARY_PATH` at
+  a `libz.a` pulled from an existing container image on this machine — not a real fix, just unblocks local
+  builds. A machine with `zlib-static` installed doesn't need this.
+
+### Plausible next steps (not started)
+
+- Draft the actual CBS `_sum` fix in `datacube` (add a `source_fraction` weight, wire it into
+  `aggregate_by_h3` for `sum`-type columns only) and verify it against the same 5 test hexes.
+- Time `lgn_integration_to_consumption.py` with/without the missing broadcast hint (via `just run-lgn` or a
+  real Databricks run) to confirm the 20x-slower risk is real here too, not just plausible.
+- Decide what (if anything) from `own_data/` should be committed vs. `.gitignore`'d — it's currently several
+  hundred MB of fetched/derived data sitting untracked in the repo.
+- If continuing the Databricks-vs-geoplegma comparison: no real Databricks timing numbers exist yet, only
+  reasoned expectations (see chat history) — getting an actual `cbs`/`lgn` job duration would make that
+  comparison real instead of inferred.
+
+## Git workflow
+
+Two long-lived branches: `develop` (integration) and `master` (always releasable — never commit
+directly, only merges via release PR + tags). Branch protection requires PRs, passing `ci` check, and
+review approvals (2 for `master`, 1 for `develop`), plus linear history on `master`.
+
+- Feature branches are cut from `develop`: `feature/<name>`, `task/<name>`, `bug/<name>`,
+  `refactor/<name>`, `hotfix/<name>`.
+- PRs into `develop` are **squash-merged** (never merge-commit — keeps `develop`'s history atomic per
+  PR).
+- Releases: a "release PR" from `develop` → `master` is merged with a **regular merge commit** (not
+  squashed), so `master`'s history shows the batch of already-squashed commits. Then
+  `cargo release <patch|minor|major>` (config in `release.toml`) bumps the single shared
+  `[workspace.package].version`, commits, tags `vX.Y.Z`, and pushes — which triggers
+  `.github/workflows/release.yml` (re-runs tests/clippy, publishes eligible crates, cuts a GitHub
+  Release) and `release-js.yml` (builds the JS native bindings).
+- `geoplegma` and `gp-encoding` are marked `publish = false` — they depend on unreleased git deps
+  (`dggal-rust`, `hex9-sys`) that block crates.io publishing.
+- Every PR must reference a kanban board item/issue tagged `Feature`/`Task`/`Bug` (or `Suggestion` if
+  none of those fit).
