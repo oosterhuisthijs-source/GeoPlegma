@@ -194,8 +194,9 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.14, `datacube_nl` 2026.10.16.12 (KDW per Natura 2000 habitat + yearly
-exceedance, `prepare/kdw.py`; LIWO flood junk fixed via `valid_max`). Before: zh .13 / nl .11 (machine-readable known
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.17.1, `datacube_nl` 2026.10.17.1 (livestock `vee_*`, `prepare/vee.py`: CBS
+census per gemeente spread over BRP farmland; label one day ahead of the real date, harmless). Before: zh .16.14 /
+nl .16.12 (KDW per Natura 2000 habitat + yearly exceedance, `prepare/kdw.py`; LIWO flood junk fixed via `valid_max`). Before: zh .13 / nl .11 (machine-readable known
 breaks, `[[break]]` in `config/guide.toml` -> `availability.parquet` `breaks`/`break_note` + GUIDE.md table). Before
 that, zh .12 / nl .10 added provenance per column (
 `config/provenance.toml` -> `tier`/`native_resolution`/`reference_period`/`time` + `availability.parquet`; yearly RIVM
