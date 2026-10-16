@@ -77,6 +77,32 @@ dichtstbijzijnde_ziekenhuis_incl_buitenpolikliniek_afst_in_km = "dichtstbijzijnd
 # 2020
 dichtstbijzijnde_winkel_ov_dagel_levensm_afst_in_km = "dichtstbijzijnde_winkels_ov_dagel_levensm_afst_in_km"
 
+# Breakdowns whose suppressed parts (< 5, shown as -99997) are filled in per square: the gap
+# total - published parts, shared equally over the suppressed parts, at most 4 each (checked on
+# 2023: the gap averages 1.5-2.8 per suppressed age group; unsuppressed squares only differ by the
+# rounding to 5). Without this the parts cover 91-99% of the totals province-wide but only 29-66%
+# in hexes with < 50 people/homes. `imputed` = the filled-in amount (summed per hex).
+[[parts]]
+total = "aantal_inwoners"
+parts = ["aantal_inwoners_0_tot_15_jaar", "aantal_inwoners_15_tot_25_jaar", "aantal_inwoners_25_tot_45_jaar", "aantal_inwoners_45_tot_65_jaar", "aantal_inwoners_65_jaar_en_ouder"]
+imputed = "bijgeschat_leeftijd"
+
+[[parts]]
+total = "aantal_inwoners"
+parts = ["aantal_mannen", "aantal_vrouwen"]
+imputed = "bijgeschat_geslacht"
+
+[[parts]]
+total = "aantal_part_huishoudens"
+parts = ["aantal_eenpersoonshuishoudens", "aantal_meerpersoonshuishoudens_zonder_kind", "aantal_eenouderhuishoudens", "aantal_tweeouderhuishoudens"]
+imputed = "bijgeschat_huishoudtype"
+
+# 15_en_later (to 2024) and 15_tot_25 + 25_en_later (2025) are never present together.
+[[parts]]
+total = "aantal_woningen"
+parts = ["aantal_woningen_bouwjaar_voor_1945", "aantal_woningen_bouwjaar_45_tot_65", "aantal_woningen_bouwjaar_65_tot_75", "aantal_woningen_bouwjaar_75_tot_85", "aantal_woningen_bouwjaar_85_tot_95", "aantal_woningen_bouwjaar_95_tot_05", "aantal_woningen_bouwjaar_05_tot_15", "aantal_woningen_bouwjaar_15_en_later", "aantal_woningen_bouwjaar_15_tot_25", "aantal_woningen_bouwjaar_25_en_later"]
+imputed = "bijgeschat_bouwjaar"
+
 # CBS 2025 split "bouwjaar 15 en later" into "15 tot 25" + "25 en later";
 # summed back for continuity (the new columns are kept as well).
 [derived]
@@ -84,6 +110,10 @@ aantal_woningen_bouwjaar_15_en_later = ["aantal_woningen_bouwjaar_15_tot_25", "a
 
 [aggregation]
 sum = [
+  "bijgeschat_leeftijd",
+  "bijgeschat_geslacht",
+  "bijgeschat_huishoudtype",
+  "bijgeschat_bouwjaar",
   "aantal_inwoners",
   "aantal_mannen",
   "aantal_vrouwen",

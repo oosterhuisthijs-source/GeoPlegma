@@ -285,6 +285,13 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
     for agg, cols in cbs["aggregation"].items():
         for c in cols:
             info.setdefault(f"{c}_{agg}", (cbs_src, None, cbs_aggs.get(agg, agg)))
+            if c.startswith("bijgeschat_"):
+                what = {"leeftijd": "inwoners in leeftijdsgroepen", "geslacht": "inwoners als man/vrouw",
+                        "huishoudtype": "huishoudens in huishoudtypen", "bouwjaar": "woningen in bouwjaarklassen"}
+                info[f"{c}_{agg}"] = (cbs_src, "aantal", f"aantal {what[c.removeprefix('bijgeschat_')]} dat is bijgeschat: "
+                                      "CBS onderdrukt delen < 5 per vierkant; het verschil tussen totaal en gepubliceerde "
+                                      "delen is gelijk over de onderdrukte delen verdeeld (max 4 elk), zodat de delen "
+                                      "optellen tot het totaal (config/cbs.toml [[parts]])")
             if c.startswith("dichtstbijzijnde_"):
                 # CBS publishes -99995 ("not available") for every square in these years
                 gap = "2024-2025" if "huisartsenpost" in c else "2025"

@@ -13,9 +13,9 @@
 [[concept]]
 name = "Inhabitants, age groups, households"
 use = ["aantal_inwoners_sum", "aantal_inwoners_0_tot_15_jaar_sum", "aantal_inwoners_65_jaar_en_ouder_sum", "aantal_part_huishoudens_sum"]
-covers = ["aantal_*_sum", "cbs_coverage"]
+covers = ["aantal_*_sum", "cbs_coverage", "bijgeschat_*"]
 trend = "care"
-note = "CBS 100 m squares, real totals. 2025 is CBS's preliminary v1: more suppressed squares (count as 0), births not published (empty), and ~30% more squares listed (cbs_coverage 0.17 -> 0.22, mostly squares without residents): treat 2025 as provisional."
+note = "CBS 100 m squares, real totals. Age, sex and household-type groups add up to the totals: parts CBS suppressed (< 5 per square) are filled in (bijgeschat_*_sum says how many per cell; ~4.5% of people for age, 8% of households). 2025 is CBS's preliminary v1: more suppressed squares (count as 0), births not published (empty), and ~30% more squares listed (cbs_coverage 0.17 -> 0.22, mostly squares without residents): treat 2025 as provisional."
 
 [[concept]]
 name = "Number of homes"
@@ -29,7 +29,7 @@ name = "Housing stock by construction period, ownership, energy use"
 use = ["aantal_woningen_bouwjaar_voor_1945_sum", "percentage_koopwoningen_area_weighted_average", "gemiddeld_gasverbruik_woning_area_weighted_average"]
 covers = ["aantal_woningen_*", "percentage_koop*", "percentage_huur*", "gemiddeld_*_woning_*"]
 trend = "care"
-note = "CBS squares. CBS changed the construction-period classes in 2025 (15_en_later is summed back from 15_tot_25 + 25_en_later). Gas and electricity use are not published in 2025 (empty)."
+note = "CBS squares; construction-period classes add up to aantal_woningen_sum (suppressed classes filled in, bijgeschat_bouwjaar_sum). CBS changed the construction-period classes in 2025 (15_en_later is summed back from 15_tot_25 + 25_en_later). Gas and electricity use are not published in 2025 (empty)."
 
 [[concept]]
 name = "House value"

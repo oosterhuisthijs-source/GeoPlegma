@@ -19,6 +19,9 @@ pub struct CbsConfig {
     pub percentage_prefixes: Vec<String>,
     #[serde(default)]
     pub complements: Vec<[String; 2]>,
+    /// Breakdowns of a published total whose suppressed parts are filled in per square.
+    #[serde(default)]
+    pub parts: Vec<Parts>,
     #[serde(default)]
     pub null_strings: Vec<String>,
     /// Categorical columns whose classes start with a numeric range ("40-60
@@ -39,6 +42,24 @@ pub struct CbsConfig {
     #[serde(default)]
     pub plain_names: bool,
     pub aggregation: Aggregation,
+}
+
+/// A total and its breakdown, e.g. inhabitants by age group. CBS suppresses a part below 5 (and
+/// rounds everything to 5), so in small squares the parts miss much of the total. A suppressed
+/// part gets an equal share of `total - published parts`, at most `cap`; parts that are suppressed
+/// in every square of the year (e.g. a class that barely exists yet) are left alone. The filled-in
+/// amount per square goes to `imputed`, so consumers can see where it happened.
+#[derive(serde::Deserialize)]
+pub struct Parts {
+    pub total: String,
+    pub parts: Vec<String>,
+    pub imputed: String,
+    #[serde(default = "default_cap")]
+    pub cap: f64,
+}
+
+fn default_cap() -> f64 {
+    4.0
 }
 
 #[derive(serde::Deserialize)]
@@ -149,6 +170,41 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
             numeric.insert(b.clone(), fb);
             eprintln!("  complement {a}/{b}: filled {na} + {nb} suppressed values");
         }
+    }
+    for g in &config.parts {
+        let Some(total) = numeric.get(&g.total).cloned() else { continue };
+        let present: Vec<&String> = g
+            .parts
+            .iter()
+            .filter(|p| numeric.get(*p).is_some_and(|v| v.iter().any(Option::is_some)))
+            .collect();
+        if present.is_empty() {
+            continue;
+        }
+        let mut cols: Vec<Vec<Option<f64>>> = present.iter().map(|p| numeric.remove(*p).unwrap()).collect();
+        let mut imputed = vec![None; n_src];
+        let (mut squares, mut filled) = (0usize, 0.0);
+        for i in 0..n_src {
+            let Some(t) = total[i] else { continue };
+            let suppressed: Vec<usize> = (0..cols.len()).filter(|&k| cols[k][i].is_none()).collect();
+            let published: f64 = cols.iter().filter_map(|c| c[i]).sum();
+            let mut added = 0.0;
+            if !suppressed.is_empty() {
+                let v = ((t - published).max(0.0) / suppressed.len() as f64).min(g.cap);
+                for &k in &suppressed {
+                    cols[k][i] = Some(v);
+                }
+                added = v * suppressed.len() as f64;
+                squares += 1;
+                filled += added;
+            }
+            imputed[i] = Some(added);
+        }
+        for (p, c) in present.iter().zip(cols) {
+            numeric.insert((*p).clone(), c);
+        }
+        numeric.insert(g.imputed.clone(), imputed);
+        eprintln!("  parts of {}: {squares} squares with suppressed parts, {filled:.0} filled in", g.total);
     }
     for (target, sources) in &config.derived {
         if numeric.contains_key(target) || !sources.iter().all(|c| numeric.contains_key(c)) {
