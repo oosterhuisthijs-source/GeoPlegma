@@ -216,6 +216,11 @@ Never edit the game repos from here:
 - Started after VS Code crashed (likely the Unity NL sim being OOM-killed: >25 GB on this 31 GB machine; the
   Unity session caps NL sims with `systemd-run --user --scope -p MemoryMax=16G`). Keep heavy jobs here under
   ~8 GB (`coarsen.py --memory`, NL LGN/assemble peak ~7-8 GB).
+- **Always run NL-region steps under a memory cap**: `systemd-run --user --scope -p MemoryMax=12G -p MemorySwapMax=0
+  uv run datacube-zh/<script>.py --region nl ...`. On 2026-10-16 19:32 an uncapped NL assemble (~9 GB at 390
+  columns, plus Unity + Firefox + VS Code) ran the machine out of RAM, and the OOM killer took VS Code and every
+  Claude session in it down. A local PreToolUse hook (`.claude/hooks/guard.py`, registered in
+  `settings.local.json`, not in git) blocks uncapped `--region nl` commands.
 - Consumers split and registered; Unity moved to `~/simzh-unity/datapack`. First NL releases.
 - LGN from the raw WUR rasters (`own_data/lgn/*.zip`; `prepare/lgn.py`, `config/lgn.toml`): replaces the
   Databricks stopgap, r >= 0.99 where the stopgap was complete; the stopgap's "2022 bug" is in LGN itself.

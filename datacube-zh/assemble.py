@@ -458,6 +458,8 @@ def main():
     ap.add_argument("--data", default="own_data")
     ap.add_argument("--region", default="zh")
     ap.add_argument("--original", default=DEFAULT_ORIGINAL, help="original Delta table (for the zh compat schema)")
+    ap.add_argument("--year", type=int, choices=YEARS, help="build only this year into datacube_<region>_<year>.parquet "
+                    "(+ .columns.json); the full cube is left alone")
     args = ap.parse_args()
     reg = tomllib.loads((Path(__file__).parent / "config/regions.toml").read_text())[args.region]
     data = Path(args.data)
@@ -476,6 +478,15 @@ def main():
     if (work / "layers/osm.parquet").exists():
         meta = json.loads(pq.read_schema(work / "layers/osm.parquet").metadata[b"datacube"])
         OSM_STAMP = meta["osm_timestamp"]
+
+    if args.year:
+        t = build_year(work, args.year, base, lgn)
+        single = out / f"{name}_{args.year}"
+        pq.write_table(t, single.with_suffix(".parquet"), compression="zstd")
+        manifest = build_manifest(t.schema, {args.year: valid_shares(t)}, Path(__file__).parent / "config")
+        single.with_suffix(".columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+        log(f"wrote {single}.parquet ({t.num_rows} rows x {t.num_columns} cols) and .columns.json")
+        return
 
     delta_path = out / name
     if delta_path.exists():

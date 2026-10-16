@@ -186,8 +186,7 @@ def main():
         "geometry": pa.array([shapely.to_wkb(geo[i]) for i in inside], pa.binary()),
     })
     geo_meta = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["LineString"], "crs": None,  # null = OGC:CRS84 (lon/lat)
-        "edges": "planar"}}}
+        "encoding": "WKB", "geometry_types": ["LineString"], "edges": "planar"}}}  # no crs key = OGC:CRS84
     source = {"source": "OpenStreetMap (Geofabrik netherlands-latest.osm.pbf), © OpenStreetMap contributors, ODbL",
               "osm_timestamp": stamp, "prepared": dt.datetime.now().astimezone().isoformat(timespec="seconds")}
     lines = lines.replace_schema_metadata({"geo": json.dumps(geo_meta), "datacube": json.dumps(source)})
