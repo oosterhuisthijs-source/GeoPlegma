@@ -248,11 +248,42 @@ def check_ndw(data: Path) -> dict:
                   "NDW charging points change daily; not flagged NEW, refresh with prepare/laadpalen.py --refresh")
 
 
+def check_gdn(data: Path) -> dict:
+    """RIVM historical deposition series: a new edition (whole series recalculated) every October."""
+    local = sorted(re.findall(r"HistorischeReeksStikstofdepositie-ASCIIGrid_(\d{8})",
+                              " ".join(p.name for p in (data / "sources/rivm_gdn").glob("*.zip"))))
+    used = local[-1] if local else "not prepared"
+    base = "https://data.rivm.nl/data/stikstof/Stikstof%20Natuur/"
+    editions = []
+    for y in re.findall(r'href="(\d{4})/"', get(base)):
+        if int(y) >= 2025:
+            editions += re.findall(r"HistorischeReeksStikstofdepositie-ASCIIGrid_(\d{8})\.zip", get(f"{base}{y}/"))
+    latest = max(editions) if editions else "?"
+    newer = [f"edition {latest}"] if editions and latest > used else []
+    return result(f"edition {used}", f"edition {latest}", newer, "new edition: update GDN_EDITION in prepare/rivm.py")
+
+
+def check_gcn(data: Path) -> dict:
+    """RIVM GCN concentration maps: one round per year (published around March)."""
+    years = cube_years()
+    have = [y for y in years if (data / f"sources/rivm_gcn/conc_NO2_{y}.zip").exists()]
+    missing = [str(y) for y in years if y not in have]
+    ahead = []
+    for y in range(years[-1] + 1, dt.date.today().year + 1):
+        try:
+            last_modified(f"https://data.rivm.nl/data/gcn/conc_NO2_{y}.zip")
+            ahead.append(str(y))
+        except Exception:  # noqa: BLE001 - not published (404) or no Last-Modified
+            pass
+    return result(f"{have[0] if have else '-'}-{have[-1] if have else '-'}", f"+{','.join(ahead) or 'none'} after the cube",
+                  missing, "missing cube years: run prepare/rivm.py --download", ahead)
+
+
 CHECKS = {
     "cbs_vk100": check_cbs_vk100, "wijkbuurt": check_wijkbuurt, "leefbaarometer": check_leefbaarometer,
     "nbbg": check_nbbg, "brp": check_brp, "lgn": check_lgn, "tessera": check_tessera,
     "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind, "osm": check_osm,
-    "ndw": check_ndw,
+    "ndw": check_ndw, "gdn": check_gdn, "gcn": check_gcn,
 }
 
 

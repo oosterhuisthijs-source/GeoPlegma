@@ -181,3 +181,35 @@ use = ["laad_punten_aantal", "laad_punten_snel_aantal"]
 covers = ["laad_*"]
 trend = "no"
 note = "NDW register of public charging points (all operators), one snapshot repeated in every year: the network grew strongly since 2018, so the early years are far too high. Fast = maximum power >= 50 kW. Private home chargers are not included."
+
+[[concept]]
+name = "Climate per year (KNMI)"
+use = ["knmi_temp_gem_c", "knmi_neerslag_mm", "knmi_neerslagtekort_max_mm", "knmi_tropische_dagen"]
+alternatives = ["knmi_zomerse_dagen", "knmi_vorstdagen", "knmi_zware_neerslag_dagen", "knmi_verdamping_mm"]
+covers = ["knmi_*"]
+trend = "ok"
+note = "KNMI daily 1 km grids interpolated from station measurements, summed or averaged per calendar year: year-to-year differences are the weather (2018 and 2022 were dry summers; check knmi_neerslagtekort_max_mm). The grid is smooth between stations (temperature from ~35, precipitation from ~300, evaporation from ~32 stations), so local detail below a few km is interpolation, not measurement. Precipitation deficit: KNMI definition, cumulative evaporation minus precipitation from 1 April, maximum up to 30 September; negative in a wet summer."
+
+[[concept]]
+name = "Nitrogen deposition (RIVM)"
+use = ["gdn_stikstof_mol_ha"]
+alternatives = ["gdn_verzuring_mol_ha", "gcn_nh3_ug_m3"]
+covers = ["gdn_*"]
+trend = "ok"
+note = "RIVM historical series (edition October 2026): 2005-2025 recalculated with one method, so differences between years are real model change, weather included (deposition follows rainfall and wind). Modelled (OPS) and calibrated on measurements, 1 km: compare with Natura 2000 (natura2000_id) for exceedance. Not the yearly GDN rounds, which RIVM says cannot be strung into a series."
+
+[[concept]]
+name = "Air quality (RIVM GCN, modelled)"
+use = ["gcn_no2_ug_m3", "gcn_pm25_ug_m3"]
+alternatives = ["gcn_pm10_ug_m3", "gcn_nh3_ug_m3"]
+covers = ["gcn_*"]
+trend = "care"
+note = "Yearly background concentration maps (1 km), each year its own calculation round. RIVM: the rounds cannot be strung into one series, the calibration on measurements changed over the years (regionally varying since some rounds), so the national decline is real but local trends can be method. NH3 is the ammonia concentration (agriculture) and follows the weather strongly (more evaporation in warm, dry years such as 2022, less in the wet 2021); the 2019 map is the calibrated one of April 2021. For an independent measurement of NO2 use tropomi_no2_1e15_cm2."
+
+[[concept]]
+name = "NO2 measured from space (TROPOMI)"
+use = ["tropomi_no2_1e15_cm2"]
+alternatives = ["tropomi_no2_maanden"]
+covers = ["tropomi_*"]
+trend = "care"
+note = "Sentinel-5P TROPOMI tropospheric NO2 column (KNMI TEMIS monthly means of the reprocessed record, 0.125 degree, ~14 x 9 km): a real measurement, but of the whole column above the cell, not ground-level air, and only regional (Zuid-Holland is ~45 TROPOMI cells). Yearly value = mean of the monthly means; empty for 2018 (record starts May 2018 and winter has the highest NO2) and where fewer than 10 months have a value (clouds, mostly 2019-2021 at the edges). The 2020 dip is COVID."

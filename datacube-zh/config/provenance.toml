@@ -1,0 +1,296 @@
+# Provenance of every cube column: what kind of evidence it is, at what resolution the source has it, and
+# what moment a cube year refers to. assemble.py copies these into <cube>.columns.json (`tier`,
+# `native_resolution`, `reference_period`, `time`); release.py refuses a cube with a column no rule matches
+# and writes availability.parquet from them. Rules are tried in order; the first whose `columns` glob
+# matches wins, so specific rules go before general ones.
+#
+# tier (how the value came about):
+#   measured    instrument measurement (lidar, satellite radiance, weather stations; interpolated grids too)
+#   register    administrative registration (BAG, BRP, CBS from registers, tax data, official zones)
+#   mapped      mapped by people, completeness varies (OpenStreetMap)
+#   classified  a map made by classifying imagery or surveys into classes (LGN, NBBG, soil map, green map)
+#   modelled    a model result, possibly calibrated on measurements (noise, flooding, Leefbaarometer)
+#   embedding   learned representation from a foundation model (TESSERA)
+#   meta        coverage, source-year or bookkeeping column about another column
+#   key         identifier, location or name
+# time: yearly | biennial | editions (a few editions repeated over the years) | static (one state in every year)
+# reference_period: what moment or period the value of cube year Y describes.
+
+[[rule]]
+columns = ["h3_id", "year_int", "lat", "lon", "hex_area_m2", "province_fraction", "code", "naam",
+           "buurtcode", "buurtnaam", "wijkcode", "wijknaam", "gemeentecode", "gemeentenaam"]
+tier = "key"
+native_resolution = "H3 res 9 / Wijk- en Buurtkaart 2024 buurt"
+reference_period = "fixed"
+time = "static"
+
+# --- measurements and model maps per year (prepare/knmi.py, rivm.py, tropomi.py) ---------------------
+[[rule]]
+columns = ["knmi_*"]
+tier = "measured"
+native_resolution = "KNMI 1 km grid (interpolated from ~35 stations; precipitation ~300, evaporation ~32)"
+reference_period = "calendar year Y (precipitation deficit: 1 April - 30 September of Y)"
+time = "yearly"
+
+[[rule]]
+columns = ["gdn_*"]
+tier = "modelled"
+native_resolution = "RIVM 1 km grid"
+reference_period = "calendar year Y (historical series, one method for 2005-2025)"
+time = "yearly"
+
+[[rule]]
+columns = ["gcn_*"]
+tier = "modelled"
+native_resolution = "RIVM 1 km grid"
+reference_period = "calendar year Y (each year its own calculation round)"
+time = "yearly"
+
+[[rule]]
+columns = ["tropomi_no2_maanden"]
+tier = "meta"
+native_resolution = "0.125 degree (~14 x 9 km)"
+reference_period = "calendar year Y"
+time = "yearly"
+
+[[rule]]
+columns = ["tropomi_*"]
+tier = "measured"
+native_resolution = "0.125 degree (~14 x 9 km), satellite"
+reference_period = "cloud-free overpasses (~13:30) in calendar year Y"
+time = "yearly"
+
+# --- CBS 100 m squares -------------------------------------------------------------------------------
+[[rule]]
+columns = ["cbs_coverage", "bijgeschat_*"]
+tier = "meta"
+native_resolution = "CBS 100 m square"
+reference_period = "1 January of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["gemiddeld_*verbruik*"]
+tier = "register"
+native_resolution = "CBS 100 m square"
+reference_period = "consumption over Y-1 (grid operators' standard annual use)"
+time = "yearly"
+
+[[rule]]
+columns = ["gemiddelde_woz_waarde_*"]
+tier = "register"
+native_resolution = "CBS 100 m square"
+reference_period = "WOZ value on 1 January of Y-1"
+time = "yearly"
+
+[[rule]]
+columns = ["mediaan_inkomen_*"]
+tier = "register"
+native_resolution = "CBS 100 m square"
+reference_period = "income of Y-2 (tax register)"
+time = "yearly"
+
+[[rule]]
+columns = ["aantal_*", "percentage_*", "dichtstbijzijnde_*", "*_aantal_binnen_*", "*_area_weighted_average", "*_sum",
+           "*_min", "*_max", "*_mode"]
+tier = "register"
+native_resolution = "CBS 100 m square"
+reference_period = "1 January of Y (distances: situation of Y)"
+time = "yearly"
+
+# --- CBS Kerncijfers wijken en buurten ---------------------------------------------------------------
+[[rule]]
+columns = ["wb_coverage", "wb_*_eigen_buurt"]
+tier = "meta"
+native_resolution = "CBS buurt"
+reference_period = "Wijk- en Buurtkaart of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["wb_*"]
+tier = "register"
+native_resolution = "CBS buurt (averages filled from wijk/gemeente where CBS has none)"
+reference_period = "as published in the Wijk- en Buurtkaart of Y: population 1 January of Y, income and wealth ~Y-2"
+time = "yearly"
+
+# --- BAG ---------------------------------------------------------------------------------------------
+[[rule]]
+columns = ["num_*"]
+tier = "register"
+native_resolution = "BAG address point"
+reference_period = "1 January of Y"
+time = "yearly"
+
+# --- 3D BAG (before the LGN *_fraction catch-all) ----------------------------------------------------
+[[rule]]
+columns = ["bag3d_*"]
+tier = "measured"
+native_resolution = "building (BAG footprint, heights from AHN lidar)"
+reference_period = "snapshot 2024"
+time = "static"
+
+# --- BRP, NBBG ---------------------------------------------------------------------------------------
+[[rule]]
+columns = ["brp_coverage"]
+tier = "meta"
+native_resolution = "BRP parcel"
+reference_period = "growing season of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["brp_*"]
+tier = "register"
+native_resolution = "BRP parcel"
+reference_period = "growing season of Y (definitive registration)"
+time = "yearly"
+
+[[rule]]
+columns = ["bbg_source_year", "bbg_coverage"]
+tier = "meta"
+native_resolution = "NBBG polygon"
+reference_period = "NBBG 2020 for 2018-2021, 2022 for 2022-2025"
+time = "editions"
+
+[[rule]]
+columns = ["bbg_*"]
+tier = "classified"
+native_resolution = "NBBG polygon (whole sites)"
+reference_period = "NBBG 2020 for 2018-2021, 2022 for 2022-2025"
+time = "editions"
+
+# --- Leefbaarometer ----------------------------------------------------------------------------------
+[[rule]]
+columns = ["lbm_coverage", "lbm_source_year"]
+tier = "meta"
+native_resolution = "Leefbaarometer 100 m grid"
+reference_period = "measurement year (even years; odd years repeat the previous one)"
+time = "biennial"
+
+[[rule]]
+columns = ["lbm_*"]
+tier = "modelled"
+native_resolution = "Leefbaarometer 100 m grid"
+reference_period = "measurement year (even years; odd years repeat the previous one)"
+time = "biennial"
+
+# --- TESSERA -----------------------------------------------------------------------------------------
+[[rule]]
+columns = ["tessera_*pixels", "tessera_change_from"]
+tier = "meta"
+native_resolution = "TESSERA 10 m pixel"
+reference_period = "Sentinel-1/2 observations of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["tessera_*"]
+tier = "embedding"
+native_resolution = "TESSERA 10 m pixel"
+reference_period = "Sentinel-1/2 observations of Y (change: Y vs Y-1)"
+time = "yearly"
+
+# --- static OSM, NDW, RIVM turbines ------------------------------------------------------------------
+[[rule]]
+columns = ["osm_*"]
+tier = "mapped"
+native_resolution = "OSM line / point / polygon"
+reference_period = "OSM extract of October 2026"
+time = "static"
+
+[[rule]]
+columns = ["laad_*"]
+tier = "register"
+native_resolution = "charging location point"
+reference_period = "NDW snapshot of October 2026"
+time = "static"
+
+[[rule]]
+columns = ["wind_*"]
+tier = "register"
+native_resolution = "turbine point"
+reference_period = "RIVM register of January 2026"
+time = "static"
+
+# --- static maps (config/static.toml) ----------------------------------------------------------------
+[[rule]]
+columns = ["groundheight"]
+tier = "measured"
+native_resolution = "AHN4 0.5 m DTM (resampled to 5 m)"
+reference_period = "AHN4 flights 2020-2022"
+time = "static"
+
+[[rule]]
+columns = ["lichtemissie"]
+tier = "measured"
+native_resolution = "375 m (VIIRS satellite)"
+reference_period = "2023"
+time = "static"
+
+[[rule]]
+columns = ["flooddepth_*"]
+tier = "modelled"
+native_resolution = "LIWO flood scenario raster"
+reference_period = "current flood defences (LIWO)"
+time = "static"
+
+[[rule]]
+columns = ["geluid_lden"]
+tier = "modelled"
+native_resolution = "RIVM noise raster"
+reference_period = "edition 2020"
+time = "static"
+
+[[rule]]
+columns = ["geluid_lden_2022"]
+tier = "modelled"
+native_resolution = "RIVM noise raster"
+reference_period = "edition 2022"
+time = "static"
+
+[[rule]]
+columns = ["hitte", "waterberging"]
+tier = "modelled"
+native_resolution = "RIVM Atlas Natuurlijk Kapitaal raster"
+reference_period = "2022 (hitte); edition of the map (waterberging)"
+time = "static"
+
+[[rule]]
+columns = ["groenklasse"]
+tier = "classified"
+native_resolution = "RIVM green map 5 m (resampled to 10 m)"
+reference_period = "2022"
+time = "static"
+
+[[rule]]
+columns = ["*aandachtsgebied*", "natura2000_*"]
+tier = "register"
+native_resolution = "official zone polygon"
+reference_period = "current state (REV / Natura 2000 designation)"
+time = "static"
+
+[[rule]]
+columns = ["bodemklasse", "bodemnaam"]
+tier = "classified"
+native_resolution = "BRO Bodemkaart 1:50 000 polygon"
+reference_period = "soil survey (decades old, kept up to date in parts)"
+time = "static"
+
+[[rule]]
+columns = ["ndff_*"]
+tier = "modelled"
+native_resolution = "1 km square"
+reference_period = "NDFF observations of the 10 years before 2017"
+time = "static"
+
+# --- LGN (last: catch-all for the per-class *_fraction columns) --------------------------------------
+[[rule]]
+columns = ["lgn_coverage", "lgn_source_year"]
+tier = "meta"
+native_resolution = "LGN 5 m raster"
+reference_period = "imagery and registrations of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["lgn_groep_*", "landgebruiksklasse", "*_fraction"]
+tier = "classified"
+native_resolution = "LGN 5 m raster"
+reference_period = "imagery and registrations of Y"
+time = "yearly"

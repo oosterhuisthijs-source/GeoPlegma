@@ -19,6 +19,8 @@ Writes <data>/releases/datacube_<region>/<version>/:
                   coming back, sudden steps, columns going empty): mostly source/method changes, not real
                   change; for the consumer to read before bumping its pin
 - GUIDE.md        which column to use for what, and which are safe for trends (config/guide.toml)
+- availability.parquet   per column and year: non-null share, provenance tier, native resolution, reference
+                  period (config/provenance.toml), the guide's trend verdict and detected steps
 
 and updates <data>/releases/datacube_<region>/latest (symlink) and CHANGELOG.md.
 
@@ -188,6 +190,37 @@ def year_steps(columns: dict, stats: dict) -> list[dict]:
     return out
 
 
+def concept_of(col: str, guide: list[dict]) -> dict | None:
+    """The guide concept a column belongs to: named in use/alternatives, else matched by a covers glob."""
+    named = next((c for c in guide if col in c["use"] or col in c.get("alternatives", [])), None)
+    return named or next((c for c in guide if any(fnmatch.fnmatchcase(col, p) for p in c.get("covers", []))), None)
+
+
+def write_availability(path: Path, columns: dict, stats: dict, steps: list[dict]):
+    """One row per column and year: fill rate, provenance (config/provenance.toml), the guide's trend verdict
+    and the steps detected in that year. Lets an analysis show what data a claim rests on, and where."""
+    guide = load_guide()
+    flagged = {}
+    for s in steps:
+        flagged.setdefault((s["column"], s["year"]), []).append(s["kind"])
+    rows = []
+    for col, meta in columns.items():
+        concept = concept_of(col, guide)
+        for year, st in stats.get(col, {}).items():
+            rows.append({"name": col, "year": int(year), "non_null_share": st["non_null"],
+                         **{k: meta.get(k) for k in ("tier", "native_resolution", "reference_period", "time")},
+                         "concept": concept and concept["name"], "trend": concept and concept["trend"],
+                         "steps": ",".join(flagged.get((col, int(year)), [])) or None,
+                         "warning": meta.get("warning")})
+    tmp = path.with_suffix(".json")
+    tmp.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows))
+    duckdb.sql(f"COPY (SELECT * FROM read_json('{tmp}', format='newline_delimited', columns={{'name': 'VARCHAR', "
+               "'year': 'INTEGER', 'non_null_share': 'DOUBLE', 'tier': 'VARCHAR', 'native_resolution': 'VARCHAR', "
+               "'reference_period': 'VARCHAR', 'time': 'VARCHAR', 'concept': 'VARCHAR', 'trend': 'VARCHAR', "
+               f"'steps': 'VARCHAR', 'warning': 'VARCHAR'}}) ORDER BY 1, 2) TO '{path}' (FORMAT parquet)")
+    tmp.unlink()
+
+
 def load_guide() -> list[dict]:
     return tomllib.loads((HERE / "config/guide.toml").read_text())["concept"]
 
@@ -198,10 +231,15 @@ def guide_markdown(name: str, version: str, columns: dict) -> str:
              "Pick ONE source per concept; the cube has several for some concepts, with different definitions.",
              "Trend: **ok** = year-to-year differences are real change; **care** = mostly real, with a known step "
              "or gap; **no** = static or dominated by edition/method changes.",
-             "Per-column warnings are in the `.columns.json`; detected steps in `diff.md`.", ""]
+             "Tier (config/provenance.toml): measured, register, mapped, classified, modelled or embedding: how the "
+             "value came about. A finding that rests only on modelled or embedding columns is weaker evidence.",
+             "Per-column warnings are in the `.columns.json`; detected steps in `diff.md`; coverage per column and "
+             "year in `availability.parquet`.", ""]
     tag = lambda c: f"`{c}`" if c in columns else f"~~`{c}`~~ (not in this cube)"  # noqa: E731
     for c in load_guide():
-        lines += [f"## {c['name']} (trend: **{c['trend']}**)", "", "Use: " + ", ".join(tag(x) for x in c["use"])]
+        tiers = sorted({columns[x]["tier"] for x in c["use"] if x in columns and columns[x].get("tier")})
+        lines += [f"## {c['name']} (trend: **{c['trend']}**; tier: {', '.join(tiers) or '-'})", "",
+                  "Use: " + ", ".join(tag(x) for x in c["use"])]
         if c.get("alternatives"):
             lines.append("Alternatives: " + ", ".join(tag(x) for x in c["alternatives"]))
         lines += ["", c["note"], ""]
@@ -313,6 +351,10 @@ def main():
     commit = git("rev-parse", "HEAD")
 
     columns = json.loads((out / f"{name}.columns.json").read_text())
+    untiered = [c for c, m in columns.items() if not m.get("tier")]
+    if untiered:
+        sys.exit(f"{len(untiered)} columns without provenance (add a rule to config/provenance.toml and re-run "
+                 f"assemble.py): {', '.join(untiered[:20])}")
     log(f"computing stats over {len(columns)} columns ...")
     stats = column_stats(out / f"{name}.parquet", columns)
 
@@ -371,6 +413,7 @@ def main():
     (tmp / "stats.json").write_text(json.dumps(stats, ensure_ascii=False))
     (tmp / "diff.md").write_text(md)
     (tmp / "GUIDE.md").write_text(guide)
+    write_availability(tmp / "availability.parquet", columns, stats, steps)
     for f in files_under(tmp):
         f.chmod(0o444)
     tmp.rename(dest)

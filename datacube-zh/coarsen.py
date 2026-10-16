@@ -18,6 +18,7 @@ res 9, not via res 8, so weights stay exact). Rules per column (`rule_for`):
 - wind turbines (`WIND_RULES`)                          -> count/power summed, heights max, distance min
 - OSM line lengths (`osm_*_lengte_m`)                   -> sum
 - OSM grid/solar/marinas, NDW charging (`STATIC_RULES`) -> counts and power summed, distance min
+- KNMI climate, RIVM deposition/air quality, TROPOMI     -> area-weighted mean (TROPOMI month count: min)
 - categories (dominant class, Natura 2000, soil, buurt)  -> area-weighted majority; buurt/wijk/gemeente
                                                            and code/name pairs come from the same child value
 - flags (bool)                                          -> true if any child is true
@@ -85,6 +86,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return WIND_RULES[name], None
     if name in STATIC_RULES:
         return STATIC_RULES[name], None
+    if name == "tropomi_no2_maanden":
+        return "min", None  # months the yearly mean rests on: the weakest child counts
     if name.startswith("osm_") and name.endswith("_lengte_m"):
         return "sum", None
     if name.startswith("tessera_"):
@@ -230,6 +233,9 @@ def main():
         manifest["covered_area_m2"] = {"source": "grid", "unit": "m2", "type": "double",
                                        "aggregation": "som van de oppervlakte van die res-9 cellen; aandelen en "
                                                       "gemiddelden gelden voor dit deel van de cel"}
+        for c in ("hex_area_m2", "province_fraction", "n_children", "covered_area_m2"):
+            manifest[c].update({"tier": "key" if c == "hex_area_m2" else "meta", "native_resolution": f"H3 res {res}",
+                                "reference_period": "fixed", "time": "static"})
         (out / f"{name}_r{res}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
         log(f"res {res}: {k} cells x {n // max(k, 1)} years, {ncol} columns -> {dest} ({time.time() - t0:.0f}s)")
 

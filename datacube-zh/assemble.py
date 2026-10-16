@@ -23,6 +23,7 @@ Writes, under the region's out directory (config/regions.toml):
 Usage: uv run datacube-zh/assemble.py [--data own_data] [--region zh] [--original PATH]
 """
 import argparse
+import fnmatch
 import glob
 import json
 import shutil
@@ -184,6 +185,45 @@ LAAD_INFO = {
     "laad_punten_snel_aantal": ("aantal", "waarvan snelladers (maximaal vermogen >= 50 kW)"),
 }
 
+# Measurements and model maps per year: name -> (source, unit, aggregation)
+CELL_CENTRE = "waarde van de rastercel onder het celcentrum"
+KNMI_SRC = ("KNMI Data Platform, dagelijkse 1 km-grids (Tg1 v5, Tx1 v2, Tn1 v2, Rd1 v5, EV24 v2; interpolatie van "
+            "stationsmetingen), CC BY 4.0; prepare/knmi.py")
+GDN_SRC = ("RIVM historische reeks stikstofdepositie en verzurende depositie, editie 2026-10-06 (hele reeks 2005-2025 "
+           "met een methode doorgerekend), 1 km; prepare/rivm.py")
+GCN_SRC = "RIVM Grootschalige Concentratiekaarten Nederland (GCN), rekenronde van elk jaar, 1 km; prepare/rivm.py"
+TROPOMI_SRC = ("KNMI TEMIS, maandgemiddelde troposferische NO2-kolom van TROPOMI (Sentinel-5P) v1.0, 0,125 graad; "
+               "prepare/tropomi.py")
+MEASURE_INFO = {
+    "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {CELL_CENTRE}"),
+    "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {CELL_CENTRE}"),
+    "knmi_tropische_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 30 graden C; {CELL_CENTRE}"),
+    "knmi_vorstdagen": (KNMI_SRC, "dagen", f"dagen met minimumtemperatuur < 0 graden C; {CELL_CENTRE}"),
+    "knmi_neerslag_mm": (KNMI_SRC, "mm", f"jaarsom neerslag (dagen van 08 tot 08 UT); {CELL_CENTRE}"),
+    "knmi_zware_neerslag_dagen": (KNMI_SRC, "dagen", f"dagen met >= 20 mm neerslag; {CELL_CENTRE}"),
+    "knmi_verdamping_mm": (KNMI_SRC, "mm", f"jaarsom Makkink-referentieverdamping; {CELL_CENTRE}"),
+    "knmi_neerslagtekort_max_mm": (KNMI_SRC, "mm", "grootste potentiele neerslagtekort van het groeiseizoen: "
+                                   "cumulatief verdamping - neerslag vanaf 1 april, maximum tot 30 september (KNMI-"
+                                   f"definitie, niet afgekapt op 0); {CELL_CENTRE}"),
+    "gdn_stikstof_mol_ha": (GDN_SRC, "mol N/ha/jaar", f"totale stikstofdepositie; {CELL_CENTRE}"),
+    "gdn_verzuring_mol_ha": (GDN_SRC, "mol H+/ha/jaar", f"potentieel verzurende depositie; {CELL_CENTRE}"),
+    "gcn_no2_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie NO2; {CELL_CENTRE}"),
+    "gcn_pm10_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie PM10; {CELL_CENTRE}"),
+    "gcn_pm25_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie PM2,5; {CELL_CENTRE}"),
+    "gcn_nh3_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie NH3; {CELL_CENTRE}"),
+    "tropomi_no2_1e15_cm2": (TROPOMI_SRC, "1e15 moleculen/cm2", "gemiddelde van de maandgemiddelden (alleen "
+                             "wolkenvrije overkomsten rond 13:30); leeg in 2018 (pas vanaf mei) en bij < 10 maanden; "
+                             f"{CELL_CENTRE}"),
+    "tropomi_no2_maanden": (TROPOMI_SRC, "maanden", "aantal maanden met een waarde in dat jaar"),
+}
+MEASURE_WARNINGS = {
+    "gcn_": ("elk jaar is een eigen rekenronde: RIVM zegt dat de rondes niet als reeks achter elkaar te zetten zijn "
+             "(de kalibratie op metingen is in de loop van de jaren veranderd); de landelijke daling is echt, lokale "
+             "trends kunnen methode zijn"),
+    "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
+                 "dus alleen een regionaal signaal"),
+}
+
 
 def load_lbm(work: Path, year: int) -> pa.Table | None:
     """Leefbaarometer: biennial measurements; odd years take the previous one."""
@@ -224,12 +264,31 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
     return t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64()))
 
 
+# Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
+# (prepare/knmi.py, rivm.py, tropomi.py). Read once, filtered per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi")
+_yearly_cache: dict = {}
+
+
+def load_yearly(work: Path, layer: str, year: int) -> pa.Table | None:
+    f = work / f"layers/{layer}.parquet"
+    if not f.exists():
+        return None
+    if f not in _yearly_cache:
+        t = pq.read_table(f)
+        _yearly_cache[f] = t.set_column(t.schema.get_field_index("year_int"), "year_int",
+                                        pc.cast(t["year_int"], pa.int64()))
+    t = _yearly_cache[f]
+    return t.filter(pc.equal(t["year_int"], year))
+
+
 def build_year(work: Path, year: int, base: pa.Table, lgn: list[str] | None) -> pa.Table:
     """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG + BAG + wb + lbm + TESSERA (+ LGN)."""
     cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
     tess = load_tessera(work, year, tessera_schema(work), base["h3_id"])
     for layer in (load_brp(work, year), load_bbg(work, year), load_bag(work, year), load_wb(work, year),
-                  load_lbm(work, year), tess, load_lgn(work, year, lgn) if lgn else None):
+                  load_lbm(work, year), tess, load_lgn(work, year, lgn) if lgn else None,
+                  *(load_yearly(work, f, year) for f in YEARLY_FILES)):
         if layer is not None:
             cube = left_join(cube, layer, ["h3_id", "year_int"])
     lead = ["h3_id", "year_int"]
@@ -304,6 +363,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
     SimCityZH explanation page)."""
     cbs = tomllib.loads((config_dir / "cbs.toml").read_text())
     static = tomllib.loads((config_dir / "static.toml").read_text())
+    rules = tomllib.loads((config_dir / "provenance.toml").read_text())["rule"]
     osm_stamp = OSM_STAMP or "onbekend"
     cbs_src = "CBS Kaart van 100m x 100m met statistieken (vierkantstatistieken), per jaar"
     cbs_aggs = {
@@ -420,6 +480,8 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name in OSM_EXTRA_INFO:
             src = OSM_EXTRA_SOURCE.format(stamp=osm_stamp)
             unit, agg = OSM_EXTRA_INFO[name]
+        elif name in MEASURE_INFO:
+            src, unit, agg = MEASURE_INFO[name]
         elif name in LAAD_INFO:
             src = LAAD_SOURCE.format(stamp=LAAD_STAMP or "onbekend")
             unit, agg = LAAD_INFO[name]
@@ -454,7 +516,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name.startswith("lgn_groep_"):
             src, unit, agg = (LGN_SRC, "0-1", "som van de LGN-klassen in deze groep (config/lgn.toml); vergelijkbaar "
                               "over de jaren, anders dan losse klassen")
-        elif name.endswith("_fraction") and name != "province_fraction":
+        elif name.endswith("_fraction") and name != "province_fraction" and name not in info:
             src, unit, agg = (LGN_SRC, "0-1", "aandeel van de cel (pixelcentra) met deze LGN-klasse; leeg in jaren "
                               "waarin de klasse niet in de LGN-legenda staat")
         per_year = {y: shares.get(name) for y, shares in shares_per_year.items()}
@@ -471,10 +533,23 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name in OSM_EXTRA_INFO or name in LAAD_INFO:
             entry["warning"] = ("statisch: de stand van nu in elk jaar (geen historie in deze bron), dus geen trend; "
                                 "laadpunten en zonneparken zijn sinds 2018 sterk gegroeid")
+        elif name.startswith(tuple(MEASURE_WARNINGS)):
+            entry["warning"] = next(w for k, w in MEASURE_WARNINGS.items() if name.startswith(k))
         elif name.endswith("_share_dc"):
             entry["warning"] = "corrigeert voor ruis per jaarpaar, maar haalt daarmee ook echte provinciebrede verandering weg"
+        rule = provenance_rule(rules, name)
+        if rule is not None:
+            entry.update({k: rule[k] for k in PROVENANCE_KEYS})
         manifest[name] = entry
     return manifest
+
+
+PROVENANCE_KEYS = ("tier", "native_resolution", "reference_period", "time")
+
+
+def provenance_rule(rules: list[dict], name: str) -> dict | None:
+    """First rule of config/provenance.toml whose `columns` glob matches (release.py refuses columns without)."""
+    return next((r for r in rules if any(fnmatch.fnmatchcase(name, p) for p in r["columns"])), None)
 
 
 def write_delta(table: pa.Table, path: Path):

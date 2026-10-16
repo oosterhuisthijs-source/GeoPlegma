@@ -80,6 +80,12 @@ uv run datacube-zh/prepare/osm.py --region zh       # -> work/layers/osm.parquet
 uv run datacube-zh/prepare/osm_extra.py --region zh # -> work/layers/osm_extra.parquet (grid, solar, marinas; ~20 s)
 datacube-zh/prepare/laadpalen.py --region zh       # NDW charging points -> work/layers/laadpalen.parquet (downloads once)
 
+# 4i. measurements and model maps per year, see "Climate, deposition, air quality" below
+uv run datacube-zh/prepare/rivm.py --region zh --download   # RIVM deposition + GCN air quality -> work/layers/rivm.parquet
+uv run datacube-zh/prepare/tropomi.py --region zh           # TROPOMI NO2 (TEMIS monthly) -> work/layers/tropomi.parquet
+uv run datacube-zh/prepare/knmi.py download                 # KNMI daily grids, once for all regions (~15 h, rate-limited)
+uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knmi.parquet
+
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
 
@@ -112,6 +118,9 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5h | OSM high-voltage grid, substations, solar park power, marinas (`osm_hoogspanning_*`, `osm_onderstation_aantal`, `osm_zonnepark_vermogen_kw`, `osm_jachthaven_aantal`; static) | same Geofabrik extract | `prepare/osm_extra.py`: >= 50 kV only; exact lengths/areas in RD | done |
 | 5i | public charging points (`laad_punten_aantal`, `laad_punten_snel_aantal`; static snapshot) | [NDW open data](https://opendata.ndw.nu/) `charging_point_locations.geojson.gz` | `prepare/laadpalen.py`: location point -> H3 cell; points and >= 50 kW points | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
+| 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre | download pending (API key) |
+| 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
+| 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
 ## Validation (CBS)
 
@@ -368,6 +377,41 @@ Per cell, the same value in every year (no history in either source):
 zh: 360 km overhead, 472 km cable, 168 substations, 258 MW solar (26 MW estimated), 233 marinas, 57,988 charge points
 (1,687 fast). nl: 4,136 km / 2,244 km / 759 / 7,588 MW (892 estimated) / 1,189 / 203,062 (7,444).
 
+## Climate, deposition, air quality (`prepare/knmi.py`, `rivm.py`, `tropomi.py`), yearly
+
+The first layers that are measurements or physical models rather than registers or classifications. All are grids
+much coarser than a hex (1 km, TROPOMI ~14 x 9 km), so each hex takes the value of the grid cell under its centre;
+neighbouring hexes share a value. `native_resolution` in the `.columns.json` says so.
+
+- `knmi_*`: per calendar year from KNMI's daily grids: mean temperature, summer (>= 25 °C), tropical (>= 30 °C) and
+  frost days, precipitation total and days >= 20 mm, Makkink evaporation, and the largest potential precipitation
+  deficit of the growing season (KNMI definition: cumulative evaporation - precipitation from 1 April, maximum up to
+  30 September). The daily files (~14,600 for 2018-2025, ~30 GB) come through the KNMI Open Data API, which allows
+  ~1000 requests/hour with a registered key (`KNMI_API_KEY`); KNMI's public anonymous key shares one quota with
+  everybody and is mostly rate-limited. `knmi.py download` resumes and waits out rate limits.
+- `gdn_stikstof_mol_ha`, `gdn_verzuring_mol_ha`: RIVM's historical series, the whole 2005-2025 range recalculated with
+  one method (edition 6 October 2026), so suitable for trends. Not the yearly GDN rounds (RIVM: those cannot be strung
+  together).
+- `gcn_no2_ug_m3`, `gcn_pm10_ug_m3`, `gcn_pm25_ug_m3`, `gcn_nh3_ug_m3`: GCN background concentration maps, one
+  calculation round per year. There is no historical concentration series; RIVM warns the rounds are not a series
+  (calibration changed), hence trend "care". NH3 2019: the calibrated map of April 2021 (the zip also holds the
+  uncalibrated v1.0).
+- `tropomi_no2_1e15_cm2`: Sentinel-5P tropospheric NO2 column, mean of KNMI TEMIS's monthly means (reprocessed record
+  from May 2018). 2018 is empty (no winter months); a year needs >= 10 months (`tropomi_no2_maanden`).
+
+zh 2018 -> 2025: deposition 1,398 -> 1,070 mol N/ha, NO2 18.8 -> 14.0 ug/m3 (2023-2024 13.0), TROPOMI 5.70 (2019) ->
+5.17, with the 2020 COVID dip in both. nl: 1,410 -> 1,017 mol N/ha, NO2 13.7 -> 9.1 ug/m3. zh == nl on all shared hexes.
+
+## Provenance and availability (`config/provenance.toml`)
+
+Every column carries `tier` (measured, register, mapped, classified, modelled, embedding, meta, key),
+`native_resolution`, `reference_period` (what moment a cube year describes, e.g. WOZ = 1 January of Y-1, income ~Y-2)
+and `time` (yearly, biennial, editions, static) in its `.columns.json`, from the first matching rule in
+`config/provenance.toml`. `release.py` refuses a cube with a column no rule covers, shows the tiers per concept in
+`GUIDE.md`, and writes `availability.parquet`: one row per column and year with fill rate, provenance, the guide's
+trend verdict and the steps detected in that year. Meant for analyses (and the analyst agents) to say what a claim
+rests on and where data is missing.
+
 ## Source checks (`sources.py`)
 
 `datacube-zh/sources.py` compares, per source, the version the cube is built from (read from the
@@ -562,7 +606,7 @@ never reaches them by accident.
 uv run datacube-zh/release.py --region zh --notes "TESSERA 2018-2021 + drift correction"   # --dry-run to preview
 ```
 
-- Every release also carries `GUIDE.md` (from `config/guide.toml`): per concept the ONE column to use,
+- Every release also carries `availability.parquet` (see "Provenance and availability") and `GUIDE.md` (from `config/guide.toml`): per concept the ONE column to use,
   alternatives, and whether year-to-year differences are real change (ok / care / no). And `diff.md` lists
   year-to-year steps WITHIN the release (province mean spiking and coming back, sudden steps > 20% of the
   column's range, columns going empty), each marked documented (column warning or guide) or **new**; a new

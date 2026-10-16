@@ -194,10 +194,12 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.11, `datacube_nl` 2026.10.16.9 (add static OSM high-voltage grid,
-substations, solar park power, marinas (`prepare/osm_extra.py`) and NDW charging points (`prepare/laadpalen.py`); the
-releases before added OSM motorways/railways, `prepare/osm.py`, with a whole-line `datacube_<region>_lijnen.parquet`;
-zh .9 has a wrong `crs: null` in that line file, skip it). Talk to
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.12, `datacube_nl` 2026.10.16.10 (provenance per column,
+`config/provenance.toml` -> `tier`/`native_resolution`/`reference_period`/`time` + `availability.parquet`; yearly RIVM
+deposition + GCN air quality (`prepare/rivm.py`) and TROPOMI NO2 (`prepare/tropomi.py`). Before: static OSM grid/solar/
+marinas, NDW charging, OSM motorways/railways with a whole-line `datacube_<region>_lijnen.parquet`; zh .9 has a wrong
+`crs: null` in that line file, skip it). KNMI climate (`prepare/knmi.py`) is written but its daily grids are still
+downloading (`knmi.py download`, resumable, needs a registered `KNMI_API_KEY` to be fast); next release adds `knmi_*`. Talk to
 the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
 
 Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
@@ -214,7 +216,20 @@ Never edit the game repos from here:
   own CLAUDE.md has the layout. `~/Downloads/SimCityZH v0.95/` is gone (only a `MOVED.md` stub).
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
-### Session 2026-10-16 (evening) recap (pick up here)
+### Session 2026-10-16 (late evening): measurement layers + analyst-agent plan (pick up here)
+
+- Goal (user): use the NL cube to tell "what happened in the Netherlands" with correlations over time, backed by
+  more *measured* data, and later LLM agents as analysts. Timeline stays 2018-2025 (set by LGN/CBS/BAG; TROPOMI
+  starts May 2018). Picked: KNMI climate, RIVM GCN air quality, TROPOMI NO2, RIVM nitrogen deposition. Parked by
+  the user: energy use per postcode, BRO groundwater, KRW water quality, InSAR, the long res-7 cube, TESSERA for
+  NL (the download in `own_data/tessera/` is Zuid-Holland only, bbox 3.75-5.15 E / 51.65-52.35 N).
+- Plan order: Phase 0 provenance (done) -> KNMI (code done, data downloading) + GDN + GCN + TROPOMI (done) ->
+  Phase 2 analyst agents in a separate repo (e.g. `~/cube-analyst`, reads releases only): explorer / tester /
+  skeptic / writer roles, read-only DuckDB, change-on-change + fixed effects + spatial block bootstrap, checks at
+  res 9/8/7, every test logged with Benjamini-Hochberg, provenance gate on `availability.parquet`, validated on
+  planted known truths before use.
+
+### Session 2026-10-16 (evening) recap
 
 - Started after VS Code crashed (likely the Unity NL sim being OOM-killed: >25 GB on this 31 GB machine; the
   Unity session caps NL sims with `systemd-run --user --scope -p MemoryMax=16G`). Keep heavy jobs here under
