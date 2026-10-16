@@ -213,3 +213,103 @@ alternatives = ["tropomi_no2_maanden"]
 covers = ["tropomi_*"]
 trend = "care"
 note = "Sentinel-5P TROPOMI tropospheric NO2 column (KNMI TEMIS monthly means of the reprocessed record, 0.125 degree, ~14 x 9 km): a real measurement, but of the whole column above the cell, not ground-level air, and only regional (Zuid-Holland is ~45 TROPOMI cells). Yearly value = mean of the monthly means; empty for 2018 (record starts May 2018 and winter has the highest NO2) and where fewer than 10 months have a value (clouds, mostly 2019-2021 at the edges). The 2020 dip is COVID."
+
+# --- Known breaks, machine-readable ------------------------------------------------------------------
+# One entry per known break: the values of `columns` (globs) in each of `years` are NOT comparable with the
+# year before, for the reason in `kind`:
+#   method          the source changed how it measures or classifies (LGN remaps)
+#   classification  categories redefined (CBS origin, construction periods)
+#   definition      same name, new definition (CBS wealth, purchasing power)
+#   edition         a new edition or calculation round of the same map, rounds not a series (GCN, NBBG)
+#   coverage        the source publishes far fewer areas, the cube fills in (wb incomes)
+#   preliminary     provisional figures (CBS 2025 v1)
+#   noise           input noise differs per year; no year-to-year comparison
+# release.py writes these into availability.parquet (`breaks`, `break_note`) and GUIDE.md, and counts a detected
+# step in a matching column and year as documented. The prose notes above explain them for people.
+
+[[break]]
+columns = ["lgn_groep_bos", "lgn_groep_natuur_open", "loofbos_fraction", "naaldbos_fraction", "bos_in_*_fraction",
+           "kwelders_fraction", "*struikvegetatie*_fraction", "duin*_fraction", "*heide_fraction",
+           "gras_in_het_kustgebied_fraction", "open_zand_in_kustgebied_fraction", "rietvegetatie_fraction",
+           "overig_gras_fraction", "lgn_groep_overig"]
+years = [2021]
+kind = "method"
+note = "LGN2021 remapped nature, forest and the coast (bos +39%, kwelders x5, struikvegetatie)."
+
+[[break]]
+columns = ["lgn_groep_wegen", "wegen_en_spoorwegen_fraction", "smalle_wegen_fraction",
+           "hoofdinfrastructuur_en_spoorbaanlichamen_fraction",
+           "halfverharde_wegen_infrastructuur_langzaam_verkeer_en_overige_infrastructuur_fraction"]
+years = [2021, 2022]
+kind = "method"
+note = "LGN2021 split roads into 3 classes; LGN2022 maps ~50% more road area."
+
+[[break]]
+columns = ["natuurgraslanden_fraction", "natuurlijk_beheerde_agrarische_graslanden_fraction", "agrarisch_gras_fraction",
+           "lgn_groep_agrarisch_grasland"]
+years = [2022, 2024]
+kind = "method"
+note = "LGN2022-2023 map most natural grassland (class 45) as agricultural grass; LGN2024 maps it again."
+
+[[break]]
+columns = ["percentage_nederlandse_achtergrond_*", "percentage_*_migr_achtergr_*", "percentage_geb_*"]
+years = [2022]
+kind = "classification"
+note = "CBS replaced 'migratieachtergrond' (2018-2021) by 'herkomst' (2022 on): two classifications, no series."
+
+[[break]]
+columns = ["aantal_woningen_bouwjaar_15_en_later_sum", "aantal_woningen_bouwjaar_15_tot_25_sum",
+           "aantal_woningen_bouwjaar_25_en_later_sum"]
+years = [2025]
+kind = "classification"
+note = "CBS split the newest construction period in 2025 (15_en_later summed back from 15_tot_25 + 25_en_later)."
+
+[[break]]
+columns = ["aantal_*_sum", "bijgeschat_*_sum", "cbs_coverage", "percentage_*_area_weighted_average",
+           "gemiddelde_woz_waarde_woning_area_weighted_average"]
+years = [2025]
+kind = "preliminary"
+note = "CBS 2025 is the preliminary v1: more suppressed squares, births not published, ~30% more squares listed."
+
+[[break]]
+columns = ["wb_gemiddeld_inkomen_per_inwoner*", "wb_gemiddeld_inkomen_per_inkomensontvanger*",
+           "wb_gestandaardiseerd_inkomen_huishoudens*"]
+years = [2019]
+kind = "coverage"
+note = "From 2019 CBS publishes average buurt incomes for only ~14% of buurten; the cube fills from wijk/gemeente."
+
+[[break]]
+columns = ["wb_mediaan_vermogen_huishoudens", "wb_perc_huishoudens_lage_koopkracht"]
+years = [2022]
+kind = "definition"
+note = "CBS changed the wealth and purchasing-power definitions in 2022 (vermogen +27%, lage koopkracht -40%)."
+
+[[break]]
+columns = ["bbg_*"]
+years = [2022]
+kind = "edition"
+note = "NBBG has two editions: 2018-2021 repeat 2020, 2022-2025 repeat 2022."
+
+[[break]]
+columns = ["gcn_*"]
+years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+kind = "edition"
+note = "Each GCN year is its own calculation round; RIVM: the rounds cannot be strung into one series."
+
+[[break]]
+columns = ["tessera_change_share", "tessera_change_agri_share", "tessera_change_nonagri_share"]
+years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+kind = "noise"
+note = "Raw change shares carry each year pair's own input noise; use tessera_change_nonagri_share_dc for time series."
+
+[[break]]
+columns = ["tessera_pc*"]
+years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+kind = "noise"
+note = "PCA components shift every year with the satellite input: compare places within a year, never years."
+
+[[break]]
+columns = ["tropomi_*"]
+years = [2019]
+kind = "coverage"
+note = "The TROPOMI record starts in May 2018: 2018 has 8 months (its mean is left empty)."

@@ -412,6 +412,14 @@ and `time` (yearly, biennial, editions, static) in its `.columns.json`, from the
 trend verdict and the steps detected in that year. Meant for analyses (and the analyst agents) to say what a claim
 rests on and where data is missing.
 
+Known breaks are machine-readable too: `[[break]]` entries in `config/guide.toml` (columns as globs, the years whose
+values are not comparable with the year before, a kind: method / classification / definition / edition / coverage /
+preliminary / noise, and a note). They end up in `availability.parquet` (`breaks`, `break_note`), in a "Known
+breaks" table in `GUIDE.md`, and mark matching detected steps in `diff.md` as `[known break: kind]`. Steps that are
+documented only in prose are real changes (BRP 2023: new CAP rules) or not explained yet (births 2022, cafes
+within 1 km 2022, distance to a transfer station 2019/2021, western migration background fill 2020, Leefbaarometer
+physical environment): don't declare a break without knowing the cause.
+
 ## Source checks (`sources.py`)
 
 `datacube-zh/sources.py` compares, per source, the version the cube is built from (read from the

@@ -197,9 +197,9 @@ def concept_of(col: str, guide: list[dict]) -> dict | None:
 
 
 def write_availability(path: Path, columns: dict, stats: dict, steps: list[dict]):
-    """One row per column and year: fill rate, provenance (config/provenance.toml), the guide's trend verdict
-    and the steps detected in that year. Lets an analysis show what data a claim rests on, and where."""
-    guide = load_guide()
+    """One row per column and year: fill rate, provenance (config/provenance.toml), the guide's trend verdict,
+    the steps detected in that year and the known breaks declared for it (guide.toml [[break]]). Lets an analysis show what data a claim rests on, and where."""
+    guide, breaks = load_guide(), load_breaks()
     flagged = {}
     for s in steps:
         flagged.setdefault((s["column"], s["year"]), []).append(s["kind"])
@@ -207,7 +207,10 @@ def write_availability(path: Path, columns: dict, stats: dict, steps: list[dict]
     for col, meta in columns.items():
         concept = concept_of(col, guide)
         for year, st in stats.get(col, {}).items():
+            br = breaks_of(col, int(year), breaks)
             rows.append({"name": col, "year": int(year), "non_null_share": st["non_null"],
+                         "breaks": ",".join(b["kind"] for b in br) or None,
+                         "break_note": " ".join(b["note"] for b in br) or None,
                          **{k: meta.get(k) for k in ("tier", "native_resolution", "reference_period", "time")},
                          "concept": concept and concept["name"], "trend": concept and concept["trend"],
                          "steps": ",".join(flagged.get((col, int(year)), [])) or None,
@@ -217,12 +220,34 @@ def write_availability(path: Path, columns: dict, stats: dict, steps: list[dict]
     duckdb.sql(f"COPY (SELECT * FROM read_json('{tmp}', format='newline_delimited', columns={{'name': 'VARCHAR', "
                "'year': 'INTEGER', 'non_null_share': 'DOUBLE', 'tier': 'VARCHAR', 'native_resolution': 'VARCHAR', "
                "'reference_period': 'VARCHAR', 'time': 'VARCHAR', 'concept': 'VARCHAR', 'trend': 'VARCHAR', "
-               f"'steps': 'VARCHAR', 'warning': 'VARCHAR'}}) ORDER BY 1, 2) TO '{path}' (FORMAT parquet)")
+               f"'steps': 'VARCHAR', 'warning': 'VARCHAR', 'breaks': 'VARCHAR', 'break_note': 'VARCHAR'}}) ORDER BY 1, 2) "
+               f"TO '{path}' (FORMAT parquet)")
     tmp.unlink()
 
 
 def load_guide() -> list[dict]:
     return tomllib.loads((HERE / "config/guide.toml").read_text())["concept"]
+
+
+BREAK_KINDS = {"method", "classification", "definition", "edition", "coverage", "preliminary", "noise"}
+
+
+def load_breaks() -> list[dict]:
+    """[[break]] entries of config/guide.toml (machine-readable known breaks)."""
+    breaks = tomllib.loads((HERE / "config/guide.toml").read_text()).get("break", [])
+    for b in breaks:
+        if b["kind"] not in BREAK_KINDS:
+            sys.exit(f"guide.toml [[break]] {b['columns'][:2]}: unknown kind {b['kind']!r} ({sorted(BREAK_KINDS)})")
+    return breaks
+
+
+def breaks_of(col: str, year: int, breaks: list[dict]) -> list[dict]:
+    return [b for b in breaks if year in b["years"] and any(fnmatch.fnmatchcase(col, p) for p in b["columns"])]
+
+
+def check_breaks(breaks: list[dict], columns: dict) -> list[str]:
+    """Patterns that match no column of this cube (a typo, or a column of the other region only)."""
+    return [p for b in breaks for p in b["columns"] if not any(fnmatch.fnmatchcase(c, p) for c in columns)]
 
 
 def guide_markdown(name: str, version: str, columns: dict) -> str:
@@ -243,7 +268,14 @@ def guide_markdown(name: str, version: str, columns: dict) -> str:
         if c.get("alternatives"):
             lines.append("Alternatives: " + ", ".join(tag(x) for x in c["alternatives"]))
         lines += ["", c["note"], ""]
-    return "\n".join(lines)
+    breaks = load_breaks()
+    lines += ["## Known breaks", "", "Values in these years are not comparable with the year before (also in "
+              "`availability.parquet`, columns `breaks` and `break_note`).", "",
+              "| years | kind | columns | note |", "|---|---|---|---|"]
+    for b in breaks:
+        lines.append(f"| {', '.join(map(str, b['years']))} | {b['kind']} | "
+                     f"{', '.join(f'`{p}`' for p in b['columns'])} | {b['note']} |")
+    return "\n".join(lines) + "\n"
 
 
 def diff_markdown(version: str, prev: str | None, d: dict | None, contracts: dict, breaking: bool,
@@ -276,12 +308,17 @@ def diff_markdown(version: str, prev: str | None, d: dict | None, contracts: dic
             documented |= {c for c in cols for pat in g.get("covers", []) if fnmatch.fnmatch(c, pat)}
             if g.get("covers_source"):
                 documented |= {c for c, m in cols.items() if (m.get("source") or "").startswith(g["covers_source"])}
+        breaks = load_breaks()
         empty, by_col = {}, {}
         for st in steps:
+            br = breaks_of(st["column"], st["year"], breaks)
+            if br:
+                documented.add(st["column"])
             if st["kind"] == "empty":
                 empty.setdefault(st["year"], []).append(st["column"])
             else:
-                by_col.setdefault(st["column"], []).append(st["detail"])
+                by_col.setdefault(st["column"], []).append(
+                    st["detail"] + (f" [known break: {', '.join(b['kind'] for b in br)}]" if br else ""))
         new = sorted(c for c in set(by_col) | {c for cs in empty.values() for c in cs} if c not in documented)
         lines += [f"## Year-to-year steps within this release ({len(by_col)} columns with jumps, "
                   f"{sum(map(len, empty.values()))} going empty; {len(new)} not documented)", "",
@@ -355,6 +392,10 @@ def main():
     if untiered:
         sys.exit(f"{len(untiered)} columns without provenance (add a rule to config/provenance.toml and re-run "
                  f"assemble.py): {', '.join(untiered[:20])}")
+    unmatched = check_breaks(load_breaks(), columns)
+    if unmatched:
+        log(f"guide.toml [[break]] patterns matching no column of this cube (ok if the other region has them): "
+            f"{', '.join(unmatched)}")
     log(f"computing stats over {len(columns)} columns ...")
     stats = column_stats(out / f"{name}.parquet", columns)
 
