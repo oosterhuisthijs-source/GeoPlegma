@@ -11,6 +11,9 @@
 #   raster_min_resolution  rasters are fetched at no finer than this (m);
 #                   0 = use each layer's own `resolution`/native resolution
 #   reference       validation reference for `aantal_inwoners_sum`
+#   slice_of        build this region by cutting it from that region's assembled cube (assemble.py): one source
+#                   of truth, no per-region prepare steps except the region's grid and own layers (TESSERA).
+#                   Build the parent first. The prepare steps for a slice region are no longer needed.
 
 [zh]
 name = "Zuid-Holland"
@@ -20,6 +23,7 @@ bbox_rd = [42000, 405000, 132500, 485000]
 work = "work"
 out = "out"
 raster_min_resolution = 0
+slice_of = "nl"  # zh = the nl cube's zh hexes + zh grid columns + TESSERA (zh only)
 
 [nl]
 name = "Nederland"

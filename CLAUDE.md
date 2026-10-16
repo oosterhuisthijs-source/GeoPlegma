@@ -172,6 +172,8 @@ The overlay work below grew into `datacube-zh`, which rebuilds the datacube from
 correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead of reverse-engineering
 `own_data`'s parquet. Done and audited:
 
+- **zh is a slice of nl** (`slice_of = "nl"`, 2026-10-16): run prepare steps for nl only; `assemble.py --region zh`
+  cuts zh from the assembled nl cube + zh grid columns + TESSERA (zh only). Order: nl assemble/coarsen, then zh.
 - Regions in `datacube-zh/config/regions.toml`: `zh` (37,818 hexes → `own_data/out/datacube_zh`) and `nl`
   (468,688 hexes → `own_data/out_nl/datacube_nl`), both `year_int`-partitioned Delta tables for 2018-2025
   (plus `.parquet` and `.columns.json` exports), and the same at H3 res 8 and 7 (`coarsen.py` ->

@@ -90,6 +90,9 @@ uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knm
 
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
+# zh is a SLICE of nl (`slice_of = "nl"`, since 2026-10-16): run the prepare steps for nl only; zh needs just its
+# grid (`datacube-zh --region zh grid`) and its own layers (TESSERA, zh only). Then:
+#   assemble.py --region nl  ->  coarsen.py --region nl  ->  assemble.py --region zh  ->  coarsen.py --region zh
 
 # 5. assemble -> out/datacube_zh (real values, Delta + parquet)
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
@@ -427,6 +430,18 @@ animals but no BRP land spread over their whole area. Hexes go to the gemeente o
 so zh == nl; gemeente totals are exact. `vee_bedrijven_*` = number of farms, spread the same way. NL cattle
 3.92 M (2018) -> 3.64 M (2025), pigs 12.4 M -> 9.8 M, chickens 105 M -> 88 M. A cell value is a plausible density,
 not a farm: housed animals especially live in barns, not on the fields they are spread over.
+
+## zh as a slice of nl (`slice_of` in `config/regions.toml`)
+
+Building zh separately duplicated every prepare step and let the two drift apart. Now `assemble.py --region zh` takes
+the zh grid's hexes from the assembled nl cube, replaces the grid columns (`province_fraction`, `code`, `naam`:
+share inside Zuid-Holland) with zh's own, adds the zh-only TESSERA columns (same position as before), cuts the
+whole-line OSM file to lines crossing zh (`cellen` restricted to zh), and writes the same outputs as before
+(Delta, parquet, columns.json, the 0-255 `volledige_tijdreeks_delta`). Compared with the last separate zh build,
+only the static rasters changed (12 columns, now from nl's 25 m fetch instead of native resolution; zh mean ground
+height -0.37 -> -0.40 m NAP) and NDFF at the zh border (zh had clipped its source); every other column is identical
+(CBS, BRP, BAG, wb, lbm, NBBG, LGN, ... to 1e-6), as are TESSERA and the 15,633 OSM lines. The zh-specific
+`work/layers/*` (except TESSERA and grid) are no longer read.
 
 ## Provenance and availability (`config/provenance.toml`)
 

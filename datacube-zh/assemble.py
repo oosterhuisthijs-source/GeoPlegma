@@ -382,6 +382,7 @@ def valid_shares(table: pa.Table) -> dict:
     return {c: round(1 - table[c].null_count / n, 4) for c in table.column_names}
 
 
+REGION_LABEL = "de regio"  # region name for the manifest, set in main()
 OSM_STAMP = None  # OSM extract timestamp, set in main() from work/layers/osm.parquet
 LAAD_STAMP = None  # NDW snapshot, set in main() from work/layers/laadpalen.parquet
 
@@ -406,7 +407,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         "lat": ("H3 celcentrum", "graden", None),
         "lon": ("H3 celcentrum", "graden", None),
         "hex_area_m2": ("H3 celoppervlak (geodetisch)", "m2", None),
-        "province_fraction": ("aandeel van de cel binnen de PDOK provinciegrens Zuid-Holland", "0-1", None),
+        "province_fraction": (f"aandeel van de cel binnen {REGION_LABEL} (PDOK provinciegrenzen)", "0-1", None),
         "code": ("provinciecode (PDOK bestuurlijke gebieden)", None, None),
         "naam": ("provincienaam (PDOK bestuurlijke gebieden)", None, None),
         "cbs_coverage": (cbs_src, "0-1", "aandeel van de cel bedekt door CBS-vierkanten"),
@@ -587,6 +588,42 @@ def write_delta(table: pa.Table, path: Path):
     log(f"wrote {path} ({table.num_rows} rows x {table.num_columns} cols)")
 
 
+SLICE_GRID_COLUMNS = ["province_fraction", "code", "naam"]  # mean something per region: taken from the slice's own grid
+
+
+def slice_year(parent_parquet: Path, year: int, grid: pa.Table, work: Path) -> pa.Table:
+    """One year of a slice region: the parent cube's rows for the region's hexes, the region's own grid columns,
+    and its own layers (TESSERA)."""
+    import pyarrow.dataset as ds
+    ids = grid["h3_id"]
+    t = ds.dataset(parent_parquet).to_table(filter=(ds.field("year_int") == year) & ds.field("h3_id").isin(ids))
+    if t.num_rows != len(ids):
+        sys.exit(f"{parent_parquet.name} {year}: {t.num_rows} rows for {len(ids)} region hexes; rebuild the parent first")
+    order = t.column_names
+    own = grid.select(["h3_id", *SLICE_GRID_COLUMNS])
+    t = left_join(t.drop_columns(SLICE_GRID_COLUMNS), own, "h3_id")
+    tess = load_tessera(work, year, tessera_schema(work), ids)
+    if tess is not None:
+        t = left_join(t, tess, ["h3_id", "year_int"])
+        # same position as in a full build: after the Leefbaarometer columns
+        extra = [c for c in tess.column_names if c not in ("h3_id", "year_int")]
+        at = order.index("lbm_source_year") + 1 if "lbm_source_year" in order else len(order)
+        order = order[:at] + extra + order[at:]
+    return t.select(order).sort_by([("h3_id", "ascending")])
+
+
+def slice_lines(parent_lines: Path, ids: set[str], dest: Path):
+    """The parent's whole-line file, restricted to lines crossing the region (cellen cut to the region's cells)."""
+    t = pq.read_table(parent_lines)
+    cells = t["cellen"].to_pylist()
+    keep = [i for i, cs in enumerate(cells) if any(c in ids for c in cs)]
+    t = t.take(keep)
+    t = t.set_column(t.schema.get_field_index("cellen"), "cellen",
+                     pa.array([[c for c in cells[i] if c in ids] for i in keep], pa.list_(pa.string())))
+    pq.write_table(t.replace_schema_metadata(pq.read_schema(parent_lines).metadata), dest, compression="zstd")
+    log(f"wrote {dest} ({t.num_rows} of the parent's lines cross the region)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="own_data")
@@ -595,11 +632,16 @@ def main():
     ap.add_argument("--year", type=int, choices=YEARS, help="build only this year into datacube_<region>_<year>.parquet "
                     "(+ .columns.json); the full cube is left alone")
     args = ap.parse_args()
-    reg = tomllib.loads((Path(__file__).parent / "config/regions.toml").read_text())[args.region]
+    regs = tomllib.loads((Path(__file__).parent / "config/regions.toml").read_text())
+    reg = regs[args.region]
     data = Path(args.data)
     work, out = data / reg["work"], data / reg["out"]
     out.mkdir(parents=True, exist_ok=True)
     name = f"datacube_{args.region}"
+    global REGION_LABEL
+    REGION_LABEL = reg["name"]
+    if reg.get("slice_of"):
+        return main_slice(args, reg, regs[reg["slice_of"]], data, work, out, name)
 
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
@@ -652,9 +694,67 @@ def main():
     log(f"wrote {out / f'{name}.columns.json'} ({len(manifest)} columns)")
 
     if args.region == "zh":
-        real = pq.read_table(out / f"{name}.parquet")
-        original_schema = pq.read_schema(glob.glob(f"{args.original}/*.parquet")[0])
-        write_delta(build_compat(real, original_schema), out / "volledige_tijdreeks_delta")
+        write_compat(out, name, args.original)
+
+
+def write_compat(out: Path, name: str, original: str):
+    real = pq.read_table(out / f"{name}.parquet")
+    original_schema = pq.read_schema(glob.glob(f"{original}/*.parquet")[0])
+    write_delta(build_compat(real, original_schema), out / "volledige_tijdreeks_delta")
+
+
+def main_slice(args, reg: dict, parent: dict, data: Path, work: Path, out: Path, name: str):
+    """A region cut from its parent's assembled cube (`slice_of` in regions.toml): every value comes from the
+    parent, so the two never drift apart; only the grid columns (share inside THIS region) and the region's own
+    layers (TESSERA) are added. Build the parent first."""
+    pname = f"datacube_{reg['slice_of']}"
+    parent_out, parent_work = data / parent["out"], data / parent["work"]
+    parent_parquet = parent_out / f"{pname}.parquet"
+    if not parent_parquet.exists():
+        sys.exit(f"missing {parent_parquet}: run assemble.py --region {reg['slice_of']} first")
+    global OSM_STAMP, LAAD_STAMP
+    if (parent_work / "layers/osm.parquet").exists():
+        OSM_STAMP = json.loads(pq.read_schema(parent_work / "layers/osm.parquet").metadata[b"datacube"])["osm_timestamp"]
+    if (parent_work / "layers/laadpalen.parquet").exists():
+        LAAD_STAMP = json.loads(pq.read_schema(parent_work / "layers/laadpalen.parquet").metadata[b"datacube"])["snapshot"][:10]
+    grid = pq.read_table(work / "grid.parquet")
+    log(f"{args.region}: slice of {pname} ({len(grid)} hexes) + own layers")
+
+    if args.year:
+        t = slice_year(parent_parquet, args.year, grid, work)
+        single = out / f"{name}_{args.year}"
+        pq.write_table(t, single.with_suffix(".parquet"), compression="zstd")
+        manifest = build_manifest(t.schema, {args.year: valid_shares(t)}, Path(__file__).parent / "config")
+        single.with_suffix(".columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+        log(f"wrote {single}.parquet ({t.num_rows} rows x {t.num_columns} cols) and .columns.json")
+        return
+
+    delta_path = out / name
+    if delta_path.exists():
+        shutil.rmtree(delta_path)
+    schema, shares, writer = None, {}, None
+    for year in YEARS:
+        t = slice_year(parent_parquet, year, grid, work)
+        if schema is None:
+            schema = t.schema
+            writer = pq.ParquetWriter(out / f"{name}.parquet", schema, compression="zstd")
+        t = t.select(schema.names).cast(schema)
+        write_deltalake(str(delta_path), t, mode="append", partition_by=["year_int"])
+        writer.write_table(t)
+        shares[year] = valid_shares(t)
+        log(f"{year}: {t.num_rows} rows x {t.num_columns} cols")
+        del t
+    writer.close()
+    log(f"wrote {delta_path} (partitioned by year_int) and {out / f'{name}.parquet'}")
+
+    if (parent_out / f"{pname}_lijnen.parquet").exists():
+        slice_lines(parent_out / f"{pname}_lijnen.parquet", set(grid["h3_id"].to_pylist()), out / f"{name}_lijnen.parquet")
+
+    manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
+    (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+    log(f"wrote {out / f'{name}.columns.json'} ({len(manifest)} columns)")
+    if args.region == "zh":
+        write_compat(out, name, args.original)
 
 
 if __name__ == "__main__":
