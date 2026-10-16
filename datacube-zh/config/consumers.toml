@@ -21,10 +21,10 @@
 [zh.simzh-deckgl]
 contract = "~/simzh-deckgl/cube_contract.json"
 
-# --- simcityzh-unity: the original Unity game, data-only modding (_custom_data/build_cube_pack.py) -----------
+# --- simcityzh-unity: the original Unity game, data-only modding (~/simzh-unity/datapack/build_cube_pack.py) --
 
 [zh.simcityzh-unity]
-contract = "~/Downloads/SimCityZH v0.95/_custom_data/cube_contract.json"
+contract = "~/simzh-unity/datapack/cube_contract.json"
 
 [nl.simcityzh-unity]
-contract = "~/Downloads/SimCityZH v0.95/_custom_data/cube_contract_nl.json"
+contract = "~/simzh-unity/datapack/cube_contract_nl.json"

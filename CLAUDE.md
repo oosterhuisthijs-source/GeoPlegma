@@ -176,11 +176,11 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
   (468,688 hexes → `own_data/out_nl/datacube_nl`), both `year_int`-partitioned Delta tables for 2018-2025
   (plus `.parquet` and `.columns.json` exports).
 - Layers: grid, CBS 100m squares, admin (gemeente/wijk/buurt), static rasters/vectors (AHN, LIWO, RIVM,
-  REV, Natura 2000, BRO), LGN stopgap (ZH only, 2018-2023), CBS NBBG land use, BRP crop groups, 3D BAG,
+  REV, Natura 2000, BRO), LGN 2018-2025 from the raw WUR 5 m rasters (`prepare/lgn.py`, both regions; history LGN3-7/HGN in `own_data/lgn/` not used yet), CBS NBBG land use, BRP crop groups, 3D BAG,
   buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`), BAG verblijfsobjecten per gebruiksdoel (`num_*`,
   yearly, `datacube-zh bag`), NDFF soortendiversiteit (`ndff_*` -> `soortenrijkdomsklasse`), and (zh only,
   2018-2025) TESSERA embeddings (`tessera_*`: 16-dim PCA per hex + year-on-year change, split agri/non-agri).
-  zh cube 384 columns, nl 305. The 0-255 drop-in export now produces all 232 original columns.
+  zh cube 399 columns, nl 371. The 0-255 drop-in export now produces all 232 original columns.
 - Remaining gaps: median household income only 2018-2019 (CBS stopped publishing it);
   `soortenrijkdomsklasse` matches the original only at Spearman 0.75 (older map edition not found).
   Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
@@ -194,10 +194,11 @@ the game session bumps its pin. Consumers (each with its own contract): `simzh-d
 `simcityzh-unity` (zh + nl); releases exist for both regions (`datacube_zh` 2026.10.16.2, `datacube_nl` 2026.10.16).
 Never edit the game repos from here:
 - `~/simzh-deckgl` — the user's deck.gl version of the SimCityZH game (own TS sim, lenses, 3D BAG). Not a
-  git repo. `scripts/export_cells.py` converts the cube to `public/data/cells_<year>.json`; it reads the
-  **copy** at `~/Downloads/SimCityZH v0.95/_custom_data/datacube/datacube_zh`, not `own_data/out` directly.
-- `~/Downloads/SimCityZH v0.95/` — the original Unity game (data-only modding via `.bin` grids,
-  `_custom_data/PLAN.md`). Game constraints and recovered formulas: `_custom_data/docs/`.
+  git repo. `scripts/export_cells.py` converts the release pinned in its `cube.lock` (zh) to
+  `public/data/cells_<year>.json`; contract `~/simzh-deckgl/cube_contract.json`.
+- `~/simzh-unity/` — the original Unity game (data-only modding via `.bin` grids). Data pipeline in
+  `datapack/` (`build_cube_pack.py`, `cube.lock` pinning zh + nl, `cube_contract.json` / `_nl.json`); its
+  own CLAUDE.md has the layout. `~/Downloads/SimCityZH v0.95/` is gone (only a `MOVED.md` stub).
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
 ### Session 2026-10-16 (later) recap (pick up here)
@@ -228,8 +229,7 @@ Never edit the game repos from here:
 - `simzh-deckgl`: re-exported `cells_2018..2025.json` (`YEARS` in `export_cells.py` extended to 2025;
   backup of the old export in `data-build/export_backup_20261015_2356/`). The game itself still shows
   2018-2023 only: `src/data.ts:6` `YEARS` and the "2018–2023" trend labels in `src/metrics.ts` are
-  game-side work, not done. The export ran *before* TESSERA was added, and the Downloads copy of the cube
-  does not have the `tessera_*` columns yet (copy `own_data/out/datacube_zh*` there when the game wants them).
+  game-side work, not done. (Later the same day both games switched to pinned releases; see above.)
 - TESSERA (see `datacube-zh/README.md` "TESSERA embeddings" for method + findings): tiles 2022-2025
   (~40 GB) + venv in `own_data/tessera/`; `prepare/tessera_hex.py` -> `own_data/work/layers/tessera_<year>.parquet`;
   PCA + thresholds frozen in `own_data/tessera/pca_threshold.npz` (fit 2024+2025). Key findings: PCs =
@@ -335,7 +335,7 @@ fixed):
   Rotterdam ~51.949,4.40; Lansingerland ~51.985,4.483; Goeree wetland ~51.823,4.028); decide whether the
   rising non-agri change (3.3% -> 5.0%) is real or input drift; optionally add 2017-2021 (same PCA, no refit);
   optionally run the grassland pilot (`prepare/tessera_grass.py all`).
-- Game side (in `~/simzh-deckgl`, not here): extend `YEARS` to 2025, refresh the cube copy in Downloads,
+- Game side (in `~/simzh-deckgl`, not here): extend `YEARS` to 2025,
   and use `tessera_*` columns for e.g. a change lens, "find similar places" or analogue-based scenarios.
 - Fill the remaining null columns in `datacube-zh` (see "Current state" above).
 - Port the CBS `_sum` fix upstream into `datacube` (add a `source_fraction` weight, wire it into

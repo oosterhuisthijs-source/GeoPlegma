@@ -46,60 +46,54 @@ def left_join(left: pa.Table, right: pa.Table, keys) -> pa.Table:
     return left.join(right, keys=keys, join_type="left outer", coalesce_keys=True)
 
 
-LGN_EXPORT = "sources/lgn/lgn_parquet_files/lgn{year}_pzh_vectorized_consumption"
-LGN_YEARS = range(2018, 2023)  # 2023 is carried forward from 2022
-# In the 2022 export these two classes collapse (6.2% -> 0.2% and 1.8% ->
-# 0.06% of the province vs 2021): LGN2022 codes that the Databricks
-# config did not map. Kept, but flagged in the manifest.
-LGN_SUSPECT_2022 = ["natuurlijk_beheerde_agrarische_graslanden_fraction", "hoofdinfrastructuur_en_spoorbaanlichamen_fraction"]
-
-
-def load_lgn(data: Path) -> pa.Table | None:
-    """STOPGAP: LGN land-use fractions from the Databricks consumption export
-    (already on H3 res 9), until the raw LGN rasters are available again.
-
-    Known issues (see README): ~3,000 open-water hexes missing; polygons
-    dropped inside hexes (`lgn_coverage` < 1); 2022 code-mapping bug; no 2023
-    (2023 = copy of 2022, `lgn_source_year` = 2022).
-    """
-    tables = []
-    for y in LGN_YEARS:
-        files = glob.glob(str(data / LGN_EXPORT.format(year=y) / "*.parquet"))
-        if not files:
-            log(f"lgn: no export for {y}, skipped")
-            continue
-        t = pq.read_table(files[0])
-        t = t.set_column(0, "h3_id", pc.utf8_lower(t["h3_id"]))
-        tables.append((y, t))
-    if not tables:
+def lgn_columns(work: Path) -> list[str] | None:
+    """All LGN columns over the years (prepare/lgn.py), so every year gets the same schema: a class
+    LGN added or renamed later (zonneparken, the 2021 road split, class 45's new name) is null in
+    the years whose legend lacks it. Class columns in LGN code order, then groups and the rest."""
+    files = sorted(work.glob("layers/lgn_*.parquet"))
+    if not files:
         return None
-    last_year, last = tables[-1]
-    tables.append((2023, last))
+    seen = {c for f in files for c in pq.read_schema(f).names} - {"h3_id", "year_int"}
+    cfg = tomllib.loads((Path(__file__).parent / "config/lgn.toml").read_text())
+    order = []
+    for code, name in cfg["classes"].items():
+        old = cfg.get("renamed", {}).get(code)
+        order += ([f"{old['name']}_fraction"] if old else []) + [f"{name}_fraction"]
+    order += [f"lgn_groep_{g}" for g in cfg["groups"]] + ["lgn_coverage", "landgebruiksklasse", "lgn_source_year"]
+    return [c for c in order if c in seen]
 
-    classes = sorted({c for _, t in tables for c in t.column_names if c.endswith("_fraction")})
-    out = []
-    for year, t in tables:
-        n = t.num_rows
-        cols = {"h3_id": t["h3_id"], "year_int": pa.array([year] * n, pa.int64())}
-        for c in classes:
-            # The export has rounding overshoots up to ~1.007; cap at 1.
-            cols[c] = pc.min_element_wise(t[c], 1.0) if c in t.column_names else pa.nulls(n, pa.float64())
-        present = [t[c] for c in classes if c in t.column_names]
-        total = present[0]
-        for col in present[1:]:
-            total = pc.add(total, col)
-        cols["lgn_coverage"] = pc.min_element_wise(total, 1.0)
-        # Dominant class, written like the original ("zout water").
-        names = [c.removesuffix("_fraction").replace("_", " ") for c in classes if c in t.column_names]
-        rows = list(zip(*[t[c].to_pylist() for c in classes if c in t.column_names]))
-        cols["landgebruiksklasse"] = pa.array(
-            [names[max(range(len(r)), key=lambda i: r[i] or 0)] if any(r) else None for r in rows]
-        )
-        cols["lgn_source_year"] = pa.array([min(year, last_year)] * n, pa.int64())
-        out.append(pa.table(cols))
-    lgn = pa.concat_tables(out)
-    log(f"lgn (stopgap): {lgn.num_rows} rows, {len(classes)} classes, years {[y for y, _ in tables]}")
-    return lgn
+
+LGN_SRC = "LGN Landelijk Grondgebruik Nederland (WUR), jaarlijkse 5 m rasters LGN2018-LGN2025"
+# LGN method changes that make single classes jump between years (checked on the rasters themselves).
+_GRAS = ("LGN2022 en LGN2023 karteren het grootste deel van klasse 45 als agrarisch gras (ZH: 235 -> 10 km2); "
+         "gebruik lgn_groep_agrarisch_grasland voor tijdreeksen")
+_WEG = ("wegen zijn vanaf LGN2021 gesplitst in 251/252/253 (daarvoor klasse 25) en LGN2022 kent ~50% meer "
+        "wegoppervlak dan de jaren eromheen; vergelijk alleen 2021 en 2023-2025 met elkaar")
+LGN_WARNINGS = {
+    "agrarisch_gras_fraction": _GRAS,
+    "natuurlijk_beheerde_agrarische_graslanden_fraction": _GRAS + " (tot en met 2020 heet de klasse natuurgraslanden)",
+    "natuurgraslanden_fraction": "LGN-klasse 45 tot en met 2020; vanaf 2021 natuurlijk_beheerde_agrarische_graslanden_fraction",
+    "wegen_en_spoorwegen_fraction": "alleen 2018-2020; vanaf 2021 gesplitst, zie lgn_groep_wegen",
+    "hoofdinfrastructuur_en_spoorbaanlichamen_fraction": _WEG,
+    "halfverharde_wegen_infrastructuur_langzaam_verkeer_en_overige_infrastructuur_fraction": _WEG,
+    "smalle_wegen_fraction": _WEG,
+    "lgn_groep_wegen": _WEG,
+    "kale_grond_in_bebouwd_gebied_fraction": "alleen 2018-2020 gekarteerd (2022 in de legenda maar 0)",
+    "zout_water_fraction": "LGN2018-2020 karteren de zee minder ver uit de kust: kustcellen alleen vergelijken vanaf 2021",
+    "zoet_water_fraction": "LGN2022 en later karteren meer zoet water (ZH: 443 -> 509 -> 566 km2 in 2021-2023), deels methode",
+}
+
+
+def load_lgn(work: Path, year: int, columns: list[str]) -> pa.Table | None:
+    """LGN class fractions for one year, padded to `columns` (see lgn_columns)."""
+    f = work / f"layers/lgn_{year}.parquet"
+    if not f.exists():
+        return None
+    t = pq.read_table(f)
+    cols = {"h3_id": t["h3_id"], "year_int": t["year_int"]}
+    for c in columns:
+        cols[c] = t[c] if c in t.column_names else pa.nulls(t.num_rows, pa.float64())
+    return pa.table(cols)
 
 
 # NBBG reference year used for each cube year (NBBG has peiljaren 2020 and 2022).
@@ -179,16 +173,14 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
     return t.append_column("year_int", pa.array([year] * t.num_rows, pa.int64()))
 
 
-def build_year(work: Path, year: int, base: pa.Table, lgn: pa.Table | None) -> pa.Table:
+def build_year(work: Path, year: int, base: pa.Table, lgn: list[str] | None) -> pa.Table:
     """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG + BAG + wb + lbm + TESSERA (+ LGN)."""
     cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
     tess = load_tessera(work, year, tessera_schema(work), base["h3_id"])
     for layer in (load_brp(work, year), load_bbg(work, year), load_bag(work, year), load_wb(work, year),
-                  load_lbm(work, year), tess):
+                  load_lbm(work, year), tess, load_lgn(work, year, lgn) if lgn else None):
         if layer is not None:
             cube = left_join(cube, layer, ["h3_id", "year_int"])
-    if lgn is not None:
-        cube = left_join(cube, lgn.filter(pc.equal(lgn["year_int"], year)), ["h3_id", "year_int"])
     lead = ["h3_id", "year_int"]
     cube = cube.select(lead + [c for c in cube.column_names if c not in lead])
     return cube.sort_by([("h3_id", "ascending")])
@@ -280,9 +272,9 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
             "inkomensklasse van het vierkant (percentielgroep van de landelijke huishoudinkomensverdeling, "
             "bijv. '40-80 midden tot boven midden') als middelpunt (60), oppervlaktegewogen gemiddeld; "
             "alleen 2018-2019 (CBS publiceert de klasse daarna niet meer per vierkant)"),
-        "lgn_coverage": ("LGN (stopgap: Databricks export)", "0-1", "som van alle _fraction kolommen; < 1 = data ontbreekt in de export"),
-        "landgebruiksklasse": ("LGN (stopgap: Databricks export)", "klasse", "dominante LGN-klasse"),
-        "lgn_source_year": ("LGN (stopgap: Databricks export)", "jaar", "LGN-jaar waar de waarden vandaan komen (2023 = kopie van 2022)"),
+        "lgn_coverage": (LGN_SRC, "0-1", "aandeel van de cel met een LGN-code (< 1 alleen aan de landsgrens/zee)"),
+        "landgebruiksklasse": (LGN_SRC, "klasse", "LGN-klasse met het grootste oppervlak in de cel"),
+        "lgn_source_year": (LGN_SRC, "jaar", "LGN-jaar van de waarden (= het kubusjaar)"),
     }
     for col in ["buurtcode", "buurtnaam", "wijkcode", "wijknaam", "gemeentecode", "gemeentenaam"]:
         info[col] = ("CBS Wijk- en Buurtkaart 2024 v2", None, "buurt met de grootste overlap; wijk/gemeente afgeleid van die buurt")
@@ -384,13 +376,16 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                 "bbg_coverage": "som van alle bbg_*_fraction (1 = cel volledig gekarteerd)",
                 "bbg_dominant": "categorie met het grootste oppervlak in de cel",
             }.get(name, "aandeel van het celoppervlak met deze bodemgebruikscategorie")
+        elif name.startswith("lgn_groep_"):
+            src, unit, agg = (LGN_SRC, "0-1", "som van de LGN-klassen in deze groep (config/lgn.toml); vergelijkbaar "
+                              "over de jaren, anders dan losse klassen")
         elif name.endswith("_fraction") and name != "province_fraction":
-            src, unit, agg = ("LGN Landelijk Grondgebruik Nederland (STOPGAP: Databricks consumption export, H3 res 9)",
-                              "0-1", "aandeel van de cel met deze landgebruiksklasse")
+            src, unit, agg = (LGN_SRC, "0-1", "aandeel van de cel (pixelcentra) met deze LGN-klasse; leeg in jaren "
+                              "waarin de klasse niet in de LGN-legenda staat")
         per_year = {y: shares.get(name) for y, shares in shares_per_year.items()}
         entry = {"source": src, "unit": unit, "aggregation": agg, "type": str(field.type), "non_null_share_per_year": per_year}
-        if name in LGN_SUSPECT_2022:
-            entry["warning"] = "2022 (en 2023) waarden te laag: LGN2022-codes niet gemapt in de Databricks-export"
+        if name in LGN_WARNINGS:
+            entry["warning"] = LGN_WARNINGS[name]
         if name.startswith("tessera_change") and name.endswith("_share"):
             entry["warning"] = ("niet vergelijken tussen jaren: elk jaar heeft een eigen ruisniveau in de invoer (2017, 2021 "
                                 "en 2024 zijn ruiziger), dus het aandeel springt per jaarpaar zonder echte trend; gebruik "
@@ -423,8 +418,7 @@ def main():
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
-    # The LGN stopgap export only exists for Zuid-Holland.
-    lgn = load_lgn(data) if args.region == "zh" else None
+    lgn = lgn_columns(work)
 
     delta_path = out / name
     if delta_path.exists():

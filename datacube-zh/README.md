@@ -68,6 +68,9 @@ datacube-zh/prepare/lbm.py && ./target/release/datacube-zh cbs --layer lbm
 datacube-zh/prepare/bag.py && ./target/release/datacube-zh bag     # -> work/layers/bag_<year>.parquet
 datacube-zh/prepare/static.py --only ndff_soortendiversiteit,ndff_soortendiversiteit_rl && ./target/release/datacube-zh static
 
+# 4f. LGN2018-LGN2025 (WUR 5 m rasters, zips in own_data/lgn/), see config/lgn.toml and "LGN" below
+python3 datacube-zh/prepare/lgn.py --region zh      # -> work/layers/lgn_<year>.parquet (~40 s; nl ~10 min)
+
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
 
@@ -85,7 +88,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 |---|---|---|---|---|
 | 1 | grid | PDOK provinciegebied | geoplegma `zones_from_bbox` + polygon filter | done |
 | 2 | CBS (~135 cols, yearly) | [CBS vierkantstatistieken 100m](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/kaart-van-100-meter-bij-100-meter-met-statistieken) | polygon overlay, `config/cbs.toml` | done |
-| 3 | LGN `_fraction` (yearly) | **stopgap**: Databricks `lgn<year>_pzh_vectorized_consumption` export (`own_data/sources/lgn/`), 2018-2022, 2023 = copy of 2022. Raw rasters wanted (lgn.nl has no direct links, 4TU copies embargoed) | imported as-is in `assemble.py`; raw route would be raster engine with class counts | stopgap |
+| 3 | LGN `_fraction` + `lgn_groep_*` (yearly 2018-2025, zh + nl) | LGN2018-LGN2025 5 m rasters (WUR, CC BY 4.0), local zips in `own_data/lgn/` | `prepare/lgn.py`: hexes burned onto the 5 m RD grid (pixel-centre rule), pixel counts per hex and class | done |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
 | 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done |
 | 5b | NBBG land use (41 categories, peiljaren 2020 + 2022) | [CBS NBBG2022 mutatiebestand](https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/) | `hex_overlaps` once, then overlap per category for both years; `config/bbg.toml` | done |
@@ -153,14 +156,13 @@ Notes:
   (built-up) areas, where the original seems to have filled 0.
 - The original's fractional class values (x/7) suggest it sampled the 7 H3
   res-10 child centres per hex; this pipeline uses every pixel instead.
-- Not rebuilt: `landgebruiksklasse` (comes with LGN).
   The year-independent `aantal_inwoners` (~CBS 2020/2021 totals) will be
   filled from the CBS layer at assembly.
 
 ## Outputs (`assemble.py`)
 
 - `out/datacube_zh/` (+ `datacube_zh.parquet`): 302,544 rows (37,818 hexes x
-  2018-2025), 384 columns, real values. Includes columns the original lacks:
+  2018-2025), 399 columns, real values. Includes columns the original lacks:
   `province_fraction`, `lat`/`lon`, `hex_area_m2`, `cbs_coverage`,
   `mediaan_inkomen_huishouden_mode`, `natura2000_naam`.
 - `out/volledige_tijdreeks_delta/`: same 232 columns, order and types as the
@@ -186,24 +188,32 @@ Notes:
   official Natura 2000 site numbers; nulls where there's no data (instead of
   0); the hex set is 37,818 (204 more border slivers).
 
-## LGN stopgap (Databricks export)
+## LGN (`prepare/lgn.py`, yearly 2018-2025, zh + nl)
 
-Assessment of `own_data/lgn_parquet_files.zip` (the Databricks LGN
-consumption tables, already on H3 res 9):
-
-- OK: correct weighting (overlap / hex area), plausible province shares,
-  stable classes stable year to year, all hexes inside our grid.
-- ~3,000 hexes (8%) missing, 90% of them open water (Haringvliet,
-  Grevelingen, lakes) -> null, `lgn_coverage` null.
-- Fractions don't sum to 1: median 0.96 on land (2021: 0.998), a quarter of
-  hexes < 0.86 -> whole polygons were dropped. `lgn_coverage` = row sum, so
-  consumers can filter or renormalise knowingly.
-- 2022 mapping bug: `natuurlijk_beheerde_agrarische_graslanden` (6.2% ->
-  0.2% of the province) and `hoofdinfrastructuur_en_spoorbaanlichamen`
-  (1.8% -> 0.06%) collapse vs 2021 (flagged in the manifest).
-- 2023 = 2022 (`lgn_source_year` = 2022).
-- The original ruimtelijke-assistent table's LGN columns do *not* match this
-  export (r ~0.3-0.4 for grass/water/forest) and look less plausible.
+- Source: the WUR LGN2018-LGN2025 rasters (5 m, EPSG:28992, one shared grid). Read at full
+  resolution only: the 2018-2021 files carry AVERAGE-resampled overviews whose values are not
+  class codes (reading them at a coarser resolution gives codes 0-376).
+- Method: per 20 km tile the grid's hexes (`h3` boundaries projected to RD) are burned into a
+  hex-index raster with GDAL's pixel-centre rule; each year's pixels are counted per (hex, class).
+  `<class>_fraction` = pixels / all pixel centres in the hex (~4,200 per hex). Cross-check: 0 of
+  16,000 random pixel centres disagree with `h3.latlng_to_cell`.
+- Columns: one per class, named like the old stopgap so the switch is drop-in (a class LGN
+  renamed keeps its label per year: code 45 is `natuurgraslanden` to 2020, then
+  `natuurlijk_beheerde_agrarische_graslanden`; null in years whose legend lacks the class);
+  10 `lgn_groep_*` groups (config/lgn.toml) that sum to `lgn_coverage`; `landgebruiksklasse`
+  (dominant class), `lgn_source_year`.
+- LGN's own method changes (counted on the rasters, ZH window, km2), flagged per column in the
+  manifest: class 45 natural grassland 151 (2018-20), 235 (2021), **10 / 14 (2022 / 2023)**, 107
+  (2024-25), the rest mapped as agrarisch gras; roads split into 251-253 from 2021, and 2022 has
+  ~50% more road area than 2021/2023; "kale grond in bebouwd gebied" only to 2020; sea mapped
+  much further out from 2021; more zoet water from 2022. Use the groups for time series.
+- Validation (zh, 2021): vs the old Databricks stopgap, r >= 0.99 for nearly every class where
+  the stopgap covered the hex; its 2,964 missing hexes (open water) and dropped polygons (main
+  roads 149 vs 56 km2, water) are the only differences, so the old "2022 mapping bug" was LGN
+  itself, not the export. vs NBBG 2022: water r 0.98, glastuinbouw 0.98, akker 0.96, agrarisch
+  grasland 0.89, zonnepark 0.89, bos 0.84.
+- Not yet used: LGN3-LGN7 (1995-2012, 25 m) and HGN 1900-1990 (historical land use), also in
+  `own_data/lgn/`; planned as a separate history table.
 
 `out/datacube_zh.columns.json` is a per-column manifest: source, unit,
 aggregation, type, warning and non-null share per year.
@@ -251,7 +261,6 @@ years, sums/partitions consistent. Found and fixed:
   is suppressed in ~28k of ~79k squares, so hex averages ran over different
   squares (koop + huur median 118). The suppressed one is now filled as
   100 - the other (`complements`); hex sums are now 98.7-102 (p1-p99).
-- LGN export fractions overshoot 1 by up to 0.007 (rounding): capped at 1.
 
 Known and accepted (documented, not "fixed"):
 - CBS suppression (-99997 = small/confidential counts) makes subtotals run
@@ -282,14 +291,14 @@ Known and accepted (documented, not "fixed"):
   0.974, grasland 0.946, fruit vs LGN fruitkwekerijen 0.93. Farmed share vs
   NBBG agricultural categories r 0.86 (BRP 35% vs NBBG 42% of the province;
   NBBG also counts farmyards and ditches).
-- NBBG (land use) + BRP (crops, yearly) replace LGN for national use; LGN
-  stays in as the ZH-only stopgap.
+- NBBG (land use) + BRP (crops, yearly) complement LGN: NBBG has the functional categories
+  (woonterrein, bedrijfsterrein, recreatie), LGN the yearly cover (crops, nature types, urban green).
 
 ## Regions, years and later additions
 
 - `config/regions.toml`: `zh` (default, `own_data/work`, `out/datacube_zh`)
   and `nl` (`work_nl`, `out_nl/datacube_nl`; rasters fetched at >= 25 m).
-  The national cube is 468,688 hexes x 2018-2025 (3.75M rows, 305 columns; zh: 384);
+  The national cube is 468,688 hexes x 2018-2025 (3.75M rows, 371 columns; zh: 399);
   assembly streams one year at a time into a `year_int`-partitioned Delta
   table (~60 s, ~7 GB peak).
 - Years 2018-2025. CBS squares 2024 (v2) and 2025 (v1, preliminary; also
@@ -297,7 +306,7 @@ Known and accepted (documented, not "fixed"):
   no distances (`dichtstbijzijnde_*` all -99995), and the GP-post distance is
   absent from 2024 too; these stay null (no carry-forward), consumers list the
   gap per column in their contract (see `config/consumers.toml`). NBBG 2024-2025 use
-  peiljaar 2022; LGN stopgap stays 2018-2023 (ZH only).
+  peiljaar 2022; LGN is yearly 2018-2025 for both regions.
 - CBS sums are "the sum of published values": a hex touched only by
   suppressed squares gets 0 (not null), consistent with hexes without squares.
   CBS 2025 split "bouwjaar 15 en later"; `[derived]` in cbs.toml sums it back.

@@ -1,0 +1,86 @@
+# LGN (Landelijk Grondgebruik Nederland, WUR, CC BY 4.0) -> per-hex class fractions (prepare/lgn.py).
+#
+# Source: the yearly 5 m rasters LGN2018..LGN2025 (EPSG:28992, one shared grid, origin 0/625000),
+# downloaded as zips into <data>/lgn/. Read at full resolution only: the 2018-2021 files carry
+# AVERAGE-resampled overviews whose values are not class codes.
+#
+# Each class is one column `<name>_fraction` = share of the hex area (pixel centres) with that code.
+# Column names follow the stopgap (Databricks export) so the switch is drop-in: a code that LGN
+# renamed gets the name of its label in that year (`renamed`). A class not in a year's legend is
+# null that year; a class in the legend but absent from the hex is 0.
+
+years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+zip = "lgn/LGN{year}.zip"
+
+[classes]
+1 = "agrarisch_gras"
+2 = "maïs"
+3 = "aardappelen"
+4 = "bieten"
+5 = "granen"
+6 = "overige_landbouwgewassen"
+8 = "glastuinbouw"
+9 = "boomgaarden"
+10 = "bloembollen"
+11 = "loofbos"
+12 = "naaldbos"
+16 = "zoet_water"
+17 = "zout_water"
+18 = "bebouwing_in_primair_bebouwd_gebied"
+19 = "bebouwing_in_secundair_bebouwd_gebied"
+20 = "bos_in_primair_bebouwd_gebied"
+22 = "bos_in_secundair_bebouwd_gebied"
+23 = "gras_in_primair_bebouwd_gebied"
+24 = "kale_grond_in_bebouwd_gebied"
+25 = "wegen_en_spoorwegen"
+26 = "bebouwing_in_buitengebied"
+27 = "overig_grondgebruik_in_buitengebied"
+28 = "gras_in_secundair_bebouwd_gebied"
+29 = "zonneparken"
+30 = "kwelders"
+31 = "open_zand_in_kustgebied"
+32 = "duinen_met_lage_vegetatie"
+33 = "duinen_met_hoge_vegetatie"
+34 = "duinheide"
+35 = "open_stuifzand_en_of_rivierzand"
+36 = "heide"
+37 = "matig_vergraste_heide"
+38 = "sterk_vergraste_heide"
+39 = "hoogveen"
+40 = "bos_in_hoogveengebied"
+41 = "overige_moeras_vegetatie"
+42 = "rietvegetatie"
+43 = "bos_in_moerasgebied"
+45 = "natuurlijk_beheerde_agrarische_graslanden"
+46 = "gras_in_het_kustgebied"
+47 = "overig_gras"
+61 = "boomkwekerijen"
+62 = "fruitkwekerijen"
+251 = "hoofdinfrastructuur_en_spoorbaanlichamen"
+252 = "halfverharde_wegen_infrastructuur_langzaam_verkeer_en_overige_infrastructuur"
+253 = "smalle_wegen"
+321 = "struikvegetatie_in_hoogveengebied_laag"
+322 = "struikvegetatie_in_moerasgebied_laag"
+323 = "overige_struikvegetatie_laag"
+331 = "struikvegetatie_in_hoogveengebied_hoog"
+332 = "struikvegetatie_in_moerasgebied_hoog"
+333 = "overige_struikvegetatie_hoog"
+
+# Code -> name used up to and including `until` (LGN relabelled the class afterwards).
+[renamed]
+45 = { until = 2020, name = "natuurgraslanden" }
+
+# Groups that stay comparable across LGN's method changes (2021: roads split into 251-253,
+# "kale grond in bebouwd gebied" dropped, sea mapped further out; 2022-2023: most of class 45
+# mapped as 1). Columns `lgn_groep_<name>`; together they sum to lgn_coverage.
+[groups]
+agrarisch_grasland = [1, 45]
+akkerbouw = [2, 3, 4, 5, 6, 10]
+tuinbouw_en_kwekerijen = [8, 9, 61, 62]
+bebouwing = [18, 19, 26]
+wegen = [25, 251, 252, 253]
+stedelijk_groen = [20, 22, 23, 28]
+bos = [11, 12, 40, 43]
+natuur_open = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 46, 321, 322, 323, 331, 332, 333]
+water = [16, 17]
+overig = [24, 27, 29, 47]
