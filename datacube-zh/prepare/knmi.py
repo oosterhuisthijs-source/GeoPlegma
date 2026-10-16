@@ -76,25 +76,36 @@ def parse_years(s: str) -> list[int]:
     return list(range(int(a), int(b or a) + 1))
 
 
-def api_get(url: str, key: str) -> dict:
-    """GET a JSON API url, waiting out rate limits (429) and transient errors."""
-    wait = 30
+def limited(e: urllib.error.HTTPError) -> bool:
+    """Rate limit (429) or quota used up (403 'Quota exceeded': a registered key has ~1000 requests per hour)."""
+    if e.code == 429:
+        return True
+    return e.code == 403 and b"Quota exceeded" in e.read()
+
+
+def api_get(url: str, keys: list[str]) -> dict:
+    """GET a JSON API url. On a rate limit or exhausted quota, try the next key; when all keys are limited,
+    wait (doubling up to 15 min). Transient server and network errors are retried too."""
+    wait, k = 30, 0
     while True:
-        try:
-            req = urllib.request.Request(url, headers={"Authorization": key})
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.load(r)
-        except urllib.error.HTTPError as e:
-            if e.code not in (429, 500, 502, 503, 504):
-                raise
-            log(f"  HTTP {e.code}, waiting {wait}s")
-        except (urllib.error.URLError, TimeoutError) as e:
-            log(f"  {e}, waiting {wait}s")
+        for _ in keys:
+            try:
+                req = urllib.request.Request(url, headers={"Authorization": keys[k]})
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    return json.load(r)
+            except urllib.error.HTTPError as e:
+                if not limited(e) and e.code not in (500, 502, 503, 504):
+                    raise
+                k = (k + 1) % len(keys)
+            except (urllib.error.URLError, TimeoutError) as e:
+                log(f"  {e}")
+                break
+        log(f"  all keys limited, waiting {wait}s ({time.strftime('%H:%M')})")
         time.sleep(wait)
         wait = min(wait * 2, 900)
 
 
-def list_files(name: str, version: int, key: str, years: list[int]) -> dict[str, str]:
+def list_files(name: str, version: int, key: list[str], years: list[int]) -> dict[str, str]:
     """{yyyymmdd: filename} for the days of `years`, the highest file version per day. Lists by filename from
     the day before the first year (`begin` = list after this filename) and pages with nextPageToken."""
     prefix = f"INTER_OPER_R___{name.upper().ljust(8, '_')}L3__"  # e.g. INTER_OPER_R___TG1_____L3__
@@ -122,7 +133,7 @@ KEY_FILE = Path.home() / ".config/knmi_api_key"
 
 def download(data: Path, years: list[int]):
     own = os.environ.get("KNMI_API_KEY") or (KEY_FILE.read_text().strip() if KEY_FILE.exists() else None)
-    key = own or ANON_KEY
+    key = [own, ANON_KEY] if own else [ANON_KEY]  # anonymous key fills in while the own quota is used up
     log("key:", "registered (KNMI_API_KEY or ~/.config/knmi_api_key)" if own else "public anonymous key (shared quota)")
     for var, (name, version) in DATASETS.items():
         dest = data / "sources/knmi" / name
