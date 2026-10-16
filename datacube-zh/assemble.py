@@ -196,6 +196,10 @@ TROPOMI_SRC = ("KNMI TEMIS, maandgemiddelde troposferische NO2-kolom van TROPOMI
                "prepare/tropomi.py")
 KDW_SRC = ("RIVM Koppeltabel relevante habitats (editie 2026-10-06; AERIUS-hexagonen 1 ha, KDW per habitattype) + "
            "RIVM historische reeks stikstofdepositie; prepare/kdw.py")
+VEE_SRC = ("CBS StatLine 80781ned (landbouwtelling per gemeente, dieren op 1 april, gemeente-indeling van dat jaar), "
+           "verdeeld over de landbouwgrond (BRP) van de gemeente; prepare/vee.py")
+VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
+VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 MEASURE_INFO = {
     "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {CELL_CENTRE}"),
     "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {CELL_CENTRE}"),
@@ -217,6 +221,14 @@ MEASURE_INFO = {
                              "wolkenvrije overkomsten rond 13:30); leeg in 2018 (pas vanaf mei) en bij < 10 maanden; "
                              f"{CELL_CENTRE}"),
     "tropomi_no2_maanden": (TROPOMI_SRC, "maanden", "aantal maanden met een waarde in dat jaar"),
+    **{f"vee_{k}": (VEE_SRC, "aantal", f"{what}; {VEE_GRAZE if graze else VEE_HOUSED}") for k, what, graze in [
+        ("rundvee", "rundvee", True), ("melkkoeien", "melk- en kalfkoeien (>= 2 jaar)", True),
+        ("schapen", "schapen", True), ("geiten", "geiten", True), ("paarden", "paarden en pony's", True),
+        ("varkens", "varkens", False), ("kippen", "kippen", False),
+        ("overig_pluimvee", "kalkoenen, slachteenden en overig pluimvee", False),
+        ("bedrijven_graasdieren", "bedrijven met graasdieren", True), ("bedrijven_rundvee", "bedrijven met rundvee", True),
+        ("bedrijven_hokdieren", "bedrijven met hokdieren", False), ("bedrijven_varkens", "bedrijven met varkens", False),
+        ("bedrijven_kippen", "bedrijven met kippen", False)]},
     "kdw_habitat_m2": (KDW_SRC, "m2", "relevant stikstofgevoelig habitatoppervlak (gekarteerd oppervlak x dekking) van de "
                        "AERIUS-hexagonen (1 ha) met hun middelpunt in de cel; leeg = geen relevant habitat"),
     "kdw_min_mol_ha": (KDW_SRC, "mol N/ha/jaar", "laagste kritische depositiewaarde van de habitattypen in de cel"),
@@ -232,6 +244,8 @@ MEASURE_WARNINGS = {
     "gcn_": ("elk jaar is een eigen rekenronde: RIVM zegt dat de rondes niet als reeks achter elkaar te zetten zijn "
              "(de kalibratie op metingen is in de loop van de jaren veranderd); de landelijke daling is echt, lokale "
              "trends kunnen methode zijn"),
+    "vee_": ("model: gemeentetotalen (CBS telt dieren in de gemeente van de vestiging) verdeeld over de landbouwgrond; "
+             "een cel toont een aannemelijke dichtheid, niet een echt bedrijf. Gemeentetotalen kloppen exact"),
     "kdw_overschr": ("depositie van het 1 km-grid op elk AERIUS-hexagon; RIVM rekent met depositie per hectare, dus "
                      "lokaal anders; landelijk 2024: 71,1% boven de KDW tegen 69,3% bij RIVM"),
     "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
@@ -279,8 +293,8 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 # Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
-# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py). Read once, filtered per year.
-YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw")
+# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py). Read once, filtered per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee")
 _yearly_cache: dict = {}
 
 

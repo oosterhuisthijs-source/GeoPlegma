@@ -84,6 +84,7 @@ datacube-zh/prepare/laadpalen.py --region zh       # NDW charging points -> work
 uv run datacube-zh/prepare/rivm.py --region zh --download   # RIVM deposition + GCN air quality -> work/layers/rivm.parquet
 uv run datacube-zh/prepare/tropomi.py --region zh           # TROPOMI NO2 (TEMIS monthly) -> work/layers/tropomi.parquet
 uv run datacube-zh/prepare/kdw.py --region zh               # KDW per habitat + exceedance -> work/layers/kdw.parquet (after rivm.py)
+uv run datacube-zh/prepare/vee.py --region zh               # livestock per gemeente spread over farmland -> work/layers/vee.parquet (needs nl BRP layers)
 uv run datacube-zh/prepare/knmi.py download                 # KNMI daily grids, once for all regions (~15 h, rate-limited)
 uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knmi.parquet
 
@@ -121,6 +122,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 | 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre | download pending (API key) |
 | 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
+| 5n | livestock per cell (`vee_*`), yearly | CBS StatLine 80781ned per gemeente | `prepare/vee.py`: spread over BRP farmland | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -413,6 +415,18 @@ hexagon goes to the H3 cell containing its centre: `kdw_habitat_m2`, `kdw_min_mo
 each hexagon: `kdw_overschreden_m2`, `kdw_overschreden_aandeel`, `kdw_overschrijding_mol_ha`. Check: relevant area
 1,711 km2 (RIVM 1,711), 2024 exceedance 71.1% of the area (RIVM, with its 1 ha deposition: 69.3%). zh: 85 km2 of
 relevant habitat, exceeded 26% (2018) -> 8% (2025).
+
+## Livestock (`prepare/vee.py`)
+
+Farm-level animal counts (RVO I&R, WUR GIAB) are not open data. The finest open level is CBS's agricultural census
+per gemeente (StatLine 80781ned, animals on 1 April, each year in that year's boundaries). `vee.py` spreads each
+gemeente's count over its farmland of that year (BRP): grazing animals (cattle, dairy cows, sheep, goats, horses)
+over grass + maize + fodder crops, housed animals (pigs, chickens, other poultry) over all farmland; gemeenten with
+animals but no BRP land spread over their whole area. Hexes go to the gemeente of the year containing their centre
+(Wijk- en Buurtkaart; its land and water features are merged per code first). Always computed on the national grid,
+so zh == nl; gemeente totals are exact. `vee_bedrijven_*` = number of farms, spread the same way. NL cattle
+3.92 M (2018) -> 3.64 M (2025), pigs 12.4 M -> 9.8 M, chickens 105 M -> 88 M. A cell value is a plausible density,
+not a farm: housed animals especially live in barns, not on the fields they are spread over.
 
 ## Provenance and availability (`config/provenance.toml`)
 

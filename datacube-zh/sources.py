@@ -279,11 +279,21 @@ def check_gcn(data: Path) -> dict:
                   missing, "missing cube years: run prepare/rivm.py --download", ahead)
 
 
+def check_cbs_landbouw(data: Path) -> dict:
+    """CBS 80781ned (livestock per gemeente): new modification date = revised or new census year."""
+    local = sorted(p.stem.split("_")[-1] for p in (data / "sources/cbs_landbouw").glob("80781ned_*.json"))
+    info = json.loads(get("https://opendata.cbs.nl/ODataApi/odata/80781ned/TableInfos?$format=json"))["value"][0]
+    remote = info["Modified"][:10]
+    used = local[-1] if local else "not prepared"
+    return result(f"modified {used}", f"modified {remote} (period {info['Period']})",
+                  [f"modified {remote}"] if local and remote > used else [], "rerun prepare/vee.py")
+
+
 CHECKS = {
     "cbs_vk100": check_cbs_vk100, "wijkbuurt": check_wijkbuurt, "leefbaarometer": check_leefbaarometer,
     "nbbg": check_nbbg, "brp": check_brp, "lgn": check_lgn, "tessera": check_tessera,
     "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind, "osm": check_osm,
-    "ndw": check_ndw, "gdn": check_gdn, "gcn": check_gcn,
+    "ndw": check_ndw, "gdn": check_gdn, "gcn": check_gcn, "cbs_landbouw": check_cbs_landbouw,
 }
 
 

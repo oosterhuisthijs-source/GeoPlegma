@@ -61,6 +61,13 @@ reference_period = "cloud-free overpasses (~13:30) in calendar year Y"
 time = "yearly"
 
 [[rule]]
+columns = ["vee_*"]
+tier = "modelled"
+native_resolution = "gemeente (CBS census), spread over BRP farmland within it"
+reference_period = "animals on 1 April of Y, gemeente boundaries of Y"
+time = "yearly"
+
+[[rule]]
 columns = ["kdw_habitat_m2", "kdw_min_mol_ha", "kdw_gewogen_mol_ha", "kdw_habitat_type"]
 tier = "register"
 native_resolution = "AERIUS hexagon (1 ha), habitat map per Natura 2000 area"

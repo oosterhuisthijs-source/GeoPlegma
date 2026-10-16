@@ -86,6 +86,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return WIND_RULES[name], None
     if name in STATIC_RULES:
         return STATIC_RULES[name], None
+    if name.startswith("vee_"):
+        return "sum", None
     if name in ("kdw_habitat_m2", "kdw_overschreden_m2"):
         return "sum", None
     if name == "kdw_min_mol_ha":

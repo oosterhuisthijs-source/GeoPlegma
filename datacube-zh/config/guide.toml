@@ -321,3 +321,23 @@ alternatives = ["kdw_gewogen_mol_ha", "kdw_overschreden_m2", "kdw_habitat_type"]
 covers = ["kdw_*"]
 trend = "care"
 note = "RIVM's map of nitrogen-sensitive Natura 2000 habitats (1 ha AERIUS hexagons, 2026 monitor) with the critical deposition value (KDW) per habitat type; the habitat map is one state, repeated in every year. Exceedance per year compares the RIVM historical deposition series (1 km) with the KDW at each hexagon, so year-to-year changes are deposition changes (incl. weather), not habitat change. Nationally 2024: 71.1% of the relevant area above its KDW here vs 69.3% in RIVM's own 1 ha calculation; local values differ more. Empty = no relevant habitat in the cell."
+
+[[concept]]
+name = "Livestock (CBS census per gemeente, spread over farmland)"
+use = ["vee_rundvee", "vee_melkkoeien", "vee_varkens", "vee_kippen", "vee_bedrijven_graasdieren", "vee_bedrijven_hokdieren"]
+alternatives = ["vee_schapen", "vee_geiten", "vee_paarden", "vee_overig_pluimvee", "vee_bedrijven_rundvee", "vee_bedrijven_varkens", "vee_bedrijven_kippen"]
+covers = ["vee_*"]
+trend = "care"
+note = "CBS agricultural census (table 80781ned, animals on 1 April) per gemeente, spread over that year's farmland (BRP): grazing animals over grass + maize + fodder crops, housed animals (pigs, poultry) over all farmland. A cell shows a plausible density, NOT a real farm: farm-level animal counts are not open data, and CBS counts animals in the gemeente of the farm's registered seat. Gemeente totals are exact (NL cattle 3.92 M in 2018 -> 3.64 M in 2025, pigs 12.4 M -> 9.8 M). Farm counts (vee_bedrijven_*) are spread the same way: fractions of farms per cell. Trend: gemeente mergers change the spreading area between years; sum over gemeenten or coarser for trends. Horses are empty in 2022 (not published), and from 2024 the per-animal farm counts (vee_bedrijven_kippen, _varkens, _rundvee) are 0 in many gemeenten that still have those animals (CBS change): use the animal counts or the totals vee_bedrijven_graasdieren / _hokdieren."
+
+[[break]]
+columns = ["vee_paarden"]
+years = [2022, 2023]
+kind = "coverage"
+note = "CBS published no horse/pony counts for 2022 (empty in that year)."
+
+[[break]]
+columns = ["vee_bedrijven_kippen", "vee_bedrijven_varkens", "vee_bedrijven_rundvee"]
+years = [2024]
+kind = "definition"
+note = "From 2024 CBS reports 0 farms in >100 gemeenten that still report pigs or chickens (30 for cattle): per-animal farm counts are not comparable from 2024; the animal counts are."
