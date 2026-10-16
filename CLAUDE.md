@@ -194,7 +194,9 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.8, `datacube_nl` 2026.10.16.7 (adds static `wind_*` turbine columns, `prepare/wind.py`). Talk to
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.10, `datacube_nl` 2026.10.16.8 (add OSM motorways/railways,
+`prepare/osm.py`: `osm_*_lengte_m` per cell + whole-line `datacube_<region>_lijnen.parquet`; zh .9 is the same data
+with a wrong `crs: null` in the line file, skip it). Talk to
 the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
 
 Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
