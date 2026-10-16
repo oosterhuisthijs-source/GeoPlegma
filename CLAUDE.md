@@ -177,7 +177,7 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
   (plus `.parquet` and `.columns.json` exports), and the same at H3 res 8 and 7 (`coarsen.py` ->
   `datacube_<region>_r8/_r7.parquet`, rule per column in their `.columns.json`).
 - Layers: grid, CBS 100m squares, admin (gemeente/wijk/buurt), static rasters/vectors (AHN, LIWO, RIVM,
-  REV, Natura 2000, BRO; noise in two RIVM editions, `geluid_lden` 2020 + `geluid_lden_2022`), LGN 2018-2025 from the raw WUR 5 m rasters (`prepare/lgn.py`, both regions; history LGN3-7/HGN in `own_data/lgn/` not used yet), CBS NBBG land use, BRP crop groups, 3D BAG,
+  REV, Natura 2000, BRO; RIVM wind turbines `wind_*`, static snapshot Jan 2026; noise in two RIVM editions, `geluid_lden` 2020 + `geluid_lden_2022`), LGN 2018-2025 from the raw WUR 5 m rasters (`prepare/lgn.py`, both regions; history LGN3-7/HGN in `own_data/lgn/` not used yet), CBS NBBG land use, BRP crop groups, 3D BAG,
   buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`), BAG verblijfsobjecten per gebruiksdoel (`num_*`,
   yearly, `datacube-zh bag`), NDFF soortendiversiteit (`ndff_*` -> `soortenrijkdomsklasse`), and (zh only,
   2018-2025) TESSERA embeddings (`tessera_*`: 16-dim PCA per hex + year-on-year change, split agri/non-agri).
@@ -194,7 +194,7 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.7, `datacube_nl` 2026.10.16.6. Talk to
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.8, `datacube_nl` 2026.10.16.7 (adds static `wind_*` turbine columns, `prepare/wind.py`). Talk to
 the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
 
 Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
