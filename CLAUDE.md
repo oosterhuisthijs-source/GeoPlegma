@@ -174,13 +174,16 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
 
 - Regions in `datacube-zh/config/regions.toml`: `zh` (37,818 hexes → `own_data/out/datacube_zh`) and `nl`
   (468,688 hexes → `own_data/out_nl/datacube_nl`), both `year_int`-partitioned Delta tables for 2018-2025
-  (plus `.parquet` and `.columns.json` exports).
+  (plus `.parquet` and `.columns.json` exports), and the same at H3 res 8 and 7 (`coarsen.py` ->
+  `datacube_<region>_r8/_r7.parquet`, rule per column in their `.columns.json`).
 - Layers: grid, CBS 100m squares, admin (gemeente/wijk/buurt), static rasters/vectors (AHN, LIWO, RIVM,
-  REV, Natura 2000, BRO), LGN 2018-2025 from the raw WUR 5 m rasters (`prepare/lgn.py`, both regions; history LGN3-7/HGN in `own_data/lgn/` not used yet), CBS NBBG land use, BRP crop groups, 3D BAG,
+  REV, Natura 2000, BRO; noise in two RIVM editions, `geluid_lden` 2020 + `geluid_lden_2022`), LGN 2018-2025 from the raw WUR 5 m rasters (`prepare/lgn.py`, both regions; history LGN3-7/HGN in `own_data/lgn/` not used yet), CBS NBBG land use, BRP crop groups, 3D BAG,
   buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`), BAG verblijfsobjecten per gebruiksdoel (`num_*`,
   yearly, `datacube-zh bag`), NDFF soortendiversiteit (`ndff_*` -> `soortenrijkdomsklasse`), and (zh only,
   2018-2025) TESSERA embeddings (`tessera_*`: 16-dim PCA per hex + year-on-year change, split agri/non-agri).
-  zh cube 399 columns, nl 371. The 0-255 drop-in export now produces all 232 original columns.
+  CBS breakdowns (age, sex, household type, construction period) add up to their totals: suppressed
+  parts are filled in per square (`[[parts]]` in `config/cbs.toml`, amount in `bijgeschat_*_sum`).
+  zh cube 404 columns, nl 376. The 0-255 drop-in export now produces all 232 original columns.
 - Remaining gaps: median household income only 2018-2019 (CBS stopped publishing it);
   `soortenrijkdomsklasse` matches the original only at Spearman 0.75 (older map edition not found).
   Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
@@ -188,10 +191,17 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
 **Separation of concerns (user's explicit wish):** GeoPlegma only *prepares* the datacube. All game /
 scenario logic lives elsewhere and reads the cube as read-only input. Consumers read **releases**, not
 `own_data/out`: `uv run datacube-zh/release.py --region zh --notes "..."` freezes the assembled cube into
-`own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`), checking consumer
-contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts releases;
-the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl); releases exist for both regions (`datacube_zh` 2026.10.16.2, `datacube_nl` 2026.10.16).
+`own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
+consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
+releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.6, `datacube_nl` 2026.10.16.5. Talk to
+the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
+
+Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
+coarse files older than the cube). `release.py` also writes `GUIDE.md` (from `config/guide.toml`: one column per
+concept, trend ok/care/no) and lists year-to-year steps in `diff.md`, each documented or **new**; keep "new" at 0
+by explaining a step in the guide/column warning or fixing the source. `python3 datacube-zh/sources.py` checks
+every source for newer versions (exit 10 on NEW; years after the cube's range are only listed).
 Never edit the game repos from here:
 - `~/simzh-deckgl` — the user's deck.gl version of the SimCityZH game (own TS sim, lenses, 3D BAG). Not a
   git repo. `scripts/export_cells.py` converts the release pinned in its `cube.lock` (zh) to
@@ -201,7 +211,27 @@ Never edit the game repos from here:
   own CLAUDE.md has the layout. `~/Downloads/SimCityZH v0.95/` is gone (only a `MOVED.md` stub).
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
-### Session 2026-10-16 (later) recap (pick up here)
+### Session 2026-10-16 (evening) recap (pick up here)
+
+- Started after VS Code crashed (likely the Unity NL sim being OOM-killed: >25 GB on this 31 GB machine; the
+  Unity session caps NL sims with `systemd-run --user --scope -p MemoryMax=16G`). Keep heavy jobs here under
+  ~8 GB (`coarsen.py --memory`, NL LGN/assemble peak ~7-8 GB).
+- Consumers split and registered; Unity moved to `~/simzh-unity/datapack`. First NL releases.
+- LGN from the raw WUR rasters (`own_data/lgn/*.zip`; `prepare/lgn.py`, `config/lgn.toml`): replaces the
+  Databricks stopgap, r >= 0.99 where the stopgap was complete; the stopgap's "2022 bug" is in LGN itself.
+  Read rasters at full resolution only (2018-2021 overviews are averaged = invalid codes).
+- Res 8/7 (`coarsen.py`), source checks (`sources.py`), noise map 2022 edition, `GUIDE.md` + step detection.
+- Source fixes found by the audit/step detection: Wijk- en Buurtkaart 2021 `percentage_ongehuwd` wrong at CBS
+  (recomputed, `[[remainder]]` in `config/wb.toml`); CBS columns with nothing published in a year are null, not 0
+  (`cbs.rs`); suppressed CBS breakdown parts filled in (`[[parts]]`).
+- Audit of the releases (integrity, ranges, zh == nl on shared hexes, res 9/8/7 totals, logic checks): clean.
+  The audit scripts were ad hoc (session scratchpad), not in the repo.
+- Open, offered but not done: weekly systemd user timer for `sources.py` (needs the user's OK); the history
+  table (HGN 1900-1990 + LGN3-7, ~7 groups per hex and epoch, separate file); new datasets for the games
+  (RIVM nitrogen deposition + critical deposition values, Plancapaciteit/Monitor Woningbouw, Primos
+  projections, grid congestion map, EP-online energy labels, subsidence InSAR).
+
+### Session 2026-10-16 (afternoon) recap
 
 - Drift correction is now default in `tessera_hex.py` (`tessera_change_nonagri_share_dc`; zh cube 385 cols).
   Release setup added (`release.py`, `config/consumers.toml`); first release cut. Draft game contract +
@@ -330,6 +360,8 @@ fixed):
   builds. A machine with `zlib-static` installed doesn't need this.
 
 ### Plausible next steps (not started)
+
+(See also the "open" bullet in the evening recap above, which is more current.)
 
 - TESSERA follow-ups: check the unexplained hotspots on the aerial photo (Noordwijk dunes ~52.30,4.51;
   Rotterdam ~51.949,4.40; Lansingerland ~51.985,4.483; Goeree wetland ~51.823,4.028); decide whether the
