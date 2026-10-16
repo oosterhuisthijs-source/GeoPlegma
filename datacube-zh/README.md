@@ -293,7 +293,10 @@ Known and accepted (documented, not "fixed"):
   assembly streams one year at a time into a `year_int`-partitioned Delta
   table (~60 s, ~7 GB peak).
 - Years 2018-2025. CBS squares 2024 (v2) and 2025 (v1, preliminary; also
-  publishes many squares with suppressed residents). NBBG 2024-2025 use
+  publishes many squares with suppressed residents). The 2025 v1 squares carry
+  no distances (`dichtstbijzijnde_*` all -99995), and the GP-post distance is
+  absent from 2024 too; these stay null (no carry-forward), consumers list the
+  gap per column in their contract (see `config/consumers.toml`). NBBG 2024-2025 use
   peiljaar 2022; LGN stopgap stays 2018-2023 (ZH only).
 - CBS sums are "the sum of published values": a hex touched only by
   suppressed squares gets 0 (not null), consistent with hexes without squares.

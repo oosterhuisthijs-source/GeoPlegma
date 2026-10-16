@@ -100,7 +100,8 @@ def check_contract(name: str, contract: dict, columns: dict, stats: dict) -> lis
         if "type" in want and want["type"] != columns[col]["type"]:
             problems.append(f"{col}: type {columns[col]['type']} (contract {want['type']})")
         per_year = stats[col]
-        for y in contract.get("years", per_year.keys()):
+        # a column-level "years" narrows the contract's years: a known, accepted gap for that column only
+        for y in want.get("years", contract.get("years", per_year.keys())):
             s = per_year.get(str(y))
             if s is None:
                 continue

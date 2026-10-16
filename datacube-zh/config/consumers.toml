@@ -6,6 +6,25 @@
 # Contract format (JSON):
 #   {"consumer": "...", "years": [2018, ...],
 #    "columns": {"<column>": {"type": "double", "min": 0, "max": 1, "max_null_share": 0.2}, ...}}
+#
+# "years" at the top level are the years the consumer wants; list the years it actually needs, not the
+# years that happen to be filled, so a gap shows up as a datacube problem. A column can narrow them with
+# its own "years" to accept a known gap for that column only, e.g. CBS stopped publishing the GP-post
+# distance after 2023:
+#   "dichtstbijzijnde_huisartsenpost_afstand_in_km_min": {"type": "double", "years": [2018, ..., 2023]}
+#
+# Each consumer pins a release per region in its own cube.lock. Null shares differ per region (nl has more
+# water and empty land), so a consumer that reads several regions keeps one contract per region.
+
+# --- simzh-deckgl: the deck.gl web game (~/simzh-deckgl, scripts/export_cells.py) ---------------------------
 
 [zh.simzh-deckgl]
 contract = "~/simzh-deckgl/cube_contract.json"
+
+# --- simcityzh-unity: the original Unity game, data-only modding (_custom_data/build_cube_pack.py) -----------
+
+[zh.simcityzh-unity]
+contract = "~/Downloads/SimCityZH v0.95/_custom_data/cube_contract.json"
+
+[nl.simcityzh-unity]
+contract = "~/Downloads/SimCityZH v0.95/_custom_data/cube_contract_nl.json"

@@ -289,6 +289,11 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
     for agg, cols in cbs["aggregation"].items():
         for c in cols:
             info.setdefault(f"{c}_{agg}", (cbs_src, None, cbs_aggs.get(agg, agg)))
+            if c.startswith("dichtstbijzijnde_"):
+                # CBS publishes -99995 ("not available") for every square in these years
+                gap = "2024-2025" if "huisartsenpost" in c else "2025"
+                s, u, how = info[f"{c}_{agg}"]
+                info[f"{c}_{agg}"] = (s, u, f"{how}; leeg in {gap}: CBS publiceert deze afstand dan (nog) niet")
     for layer in static.get("raster", []):
         src = layer.get("description", "")
         info[layer["name"]] = (f"{src} [{layer['wcs']} {layer['coverage']}]", None,
