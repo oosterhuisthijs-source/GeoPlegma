@@ -297,6 +297,16 @@ Known and accepted (documented, not "fixed"):
 - NBBG (land use) + BRP (crops, yearly) complement LGN: NBBG has the functional categories
   (woonterrein, bedrijfsterrein, recreatie), LGN the yearly cover (crops, nature types, urban green).
 
+## Source checks (`sources.py`)
+
+`datacube-zh/sources.py` compares, per source, the version the cube is built from (read from the
+prepare scripts and configs that pin it) with what the publisher offers now (CBS file listings,
+PDOK ATOM, lgn.nl, the geotessera registry, WCS capabilities, HTTP Last-Modified). `NEW` = a newer
+version for a cube year (or a new CBS vk100 year, which is what extends the cube); `+` = a year
+after the cube's last year, shown but not alarming. Exit code 10 on NEW, so it can run from a timer.
+Acting on NEW: update the pin (URL/version in the prepare script or config), re-run that step,
+assemble, coarsen, release. Report also in `own_data/sources_check.json`.
+
 ## Coarser resolutions (`coarsen.py`)
 
 `out/datacube_<region>_r8.parquet` and `_r7` (H3 res 8 ~0.74 km2, res 7 ~5.2 km2), same columns plus
