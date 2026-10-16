@@ -77,6 +77,8 @@ python3 datacube-zh/prepare/wind.py --region zh     # -> work/layers/wind.parque
 # 4h. OSM motorways + railways (Geofabrik extract, latest only), see "OpenStreetMap lines" below
 curl -L -o own_data/sources/osm/netherlands-latest.osm.pbf https://download.geofabrik.de/europe/netherlands-latest.osm.pbf
 uv run datacube-zh/prepare/osm.py --region zh       # -> work/layers/osm.parquet + osm_lijnen.parquet (~20 s)
+uv run datacube-zh/prepare/osm_extra.py --region zh # -> work/layers/osm_extra.parquet (grid, solar, marinas; ~20 s)
+datacube-zh/prepare/laadpalen.py --region zh       # NDW charging points -> work/layers/laadpalen.parquet (downloads once)
 
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
@@ -107,6 +109,8 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5e | BAG verblijfsobjecten per gebruiksdoel (`num_*`, yearly 2018-2025) | [LV BAG levenscyclus-extract](https://service.pdok.nl/kadaster/bag/atom/bag.xml) (PDOK, full history) | state on 1 January; point -> geoplegma `zone_from_point`; `config/bag.toml` | done |
 | 5f | wind turbines (`wind_*`, static, snapshot January 2026) | [RIVM windturbines](https://data.overheid.nl/dataset/54341-windturbines---vermogen) (WFS `data.rivm.nl/geo/alo/wfs`) | `prepare/wind.py`: turbine point -> H3 cell; count, power, max hub/rotor/tip height; distance hex centre -> nearest turbine | done |
 | 5g | OSM motorways + railways: line file + `osm_*_lengte_m` per cell (static, latest extract) | [Geofabrik](https://download.geofabrik.de/europe/netherlands.html) `netherlands-latest.osm.pbf` (© OpenStreetMap contributors, ODbL) | `prepare/osm.py`: ways by tag, exact line x hex intersection in RD | done |
+| 5h | OSM high-voltage grid, substations, solar park power, marinas (`osm_hoogspanning_*`, `osm_onderstation_aantal`, `osm_zonnepark_vermogen_kw`, `osm_jachthaven_aantal`; static) | same Geofabrik extract | `prepare/osm_extra.py`: >= 50 kV only; exact lengths/areas in RD | done |
+| 5i | public charging points (`laad_punten_aantal`, `laad_punten_snel_aantal`; static snapshot) | [NDW open data](https://opendata.ndw.nu/) `charging_point_locations.geojson.gz` | `prepare/laadpalen.py`: location point -> H3 cell; points and >= 50 kW points | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -342,6 +346,27 @@ files' metadata and the column manifest). Two outputs:
 zh: 15,633 ways; 981 km snelweg, 230 km autoweg, 833 km spoor, 641 km service track, 757 km
 metro/tram. nl: 72,013 ways; 6,964 / 2,377 / 5,695 / 1,956 / 1,196 km. OSM has no history in this
 setup, so every cube year carries the same network. Licence: ODbL, credit "© OpenStreetMap contributors".
+
+## OpenStreetMap grid, solar parks, marinas (`prepare/osm_extra.py`) and NDW charging points (`prepare/laadpalen.py`), static
+
+Per cell, the same value in every year (no history in either source):
+
+- `osm_hoogspanning_lengte_m`: overhead line >= 50 kV (`power=line`), each pylon line once; `osm_hoogspanning_kabel_lengte_m`:
+  underground/underwater cable >= 50 kV (less complete in OSM); `osm_hoogspanning_afstand_min_km`: cell centre to the
+  nearest overhead line >= 50 kV anywhere in NL.
+- `osm_onderstation_aantal`: substations >= 50 kV (or `substation=transmission`). The ~100k neighbourhood transformers
+  are mostly missing in OSM (~2,400 mapped), so they are left out.
+- `osm_zonnepark_vermogen_kw`: solar parks (`power=plant`, `plant:source=solar`), power split over cells by area. Only
+  443 of 930 parks have a usable power tag; the others get area x the median of the tagged ones (1,183 kW/ha, stored in
+  the layer metadata). For solar park *area* use the existing `zonneparken_fraction` (LGN, 2021-2025) or
+  `bbg_zonnepark_fraction` (NBBG); they agree (zh 1.7-1.9 km2).
+- `osm_jachthaven_aantal`: marinas (`leisure=marina`). Commercial port land is not tagged as such in Dutch OSM (it is
+  `landuse=industrial`; many Rotterdam basins are only `waterway=canal`), so there is no harbour-area column.
+- `laad_punten_aantal`, `laad_punten_snel_aantal` (>= 50 kW): NDW's national register of public charging points
+  (operators' OCPI feeds). OSM has only ~25% of these (~46k points vs 203k), hence NDW. Private home chargers are not in it.
+
+zh: 360 km overhead, 472 km cable, 168 substations, 258 MW solar (26 MW estimated), 233 marinas, 57,988 charge points
+(1,687 fast). nl: 4,136 km / 2,244 km / 759 / 7,588 MW (892 estimated) / 1,189 / 203,062 (7,444).
 
 ## Source checks (`sources.py`)
 

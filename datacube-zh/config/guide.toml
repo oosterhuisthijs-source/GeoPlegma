@@ -122,7 +122,7 @@ note = "RIVM turbine register, snapshot January 2026, repeated in every year (no
 name = "Motorways and railways (OpenStreetMap)"
 use = ["osm_snelweg_lengte_m", "osm_spoor_lengte_m", "osm_metro_tram_lengte_m"]
 alternatives = ["osm_autoweg_lengte_m", "osm_spoor_overig_lengte_m"]
-covers = ["osm_*"]
+covers = ["osm_snelweg_*", "osm_autoweg_*", "osm_spoor_*", "osm_metro_tram_*"]
 trend = "no"
 note = "Latest OSM extract repeated in every year (no history). Metres of line inside the cell; every carriageway and every track counts separately, tunnels included. The lines themselves (whole, with lanes, speed, one-way direction, tunnel/bridge) are in datacube_<region>_lijnen.parquet. Credit: © OpenStreetMap contributors (ODbL)."
 
@@ -166,3 +166,18 @@ alternatives = ["percentage_nederlandse_achtergrond_area_weighted_average"]
 covers = ["percentage_*achtergr*", "percentage_geb_*"]
 trend = "no"
 note = "CBS replaced 'migratieachtergrond' (2018-2021) by 'herkomst' (2022 on): two classifications, no series across 2021/2022. 2025 v1 suppresses many squares (lower fill)."
+
+[[concept]]
+name = "High-voltage grid, solar parks, marinas (OpenStreetMap)"
+use = ["osm_hoogspanning_lengte_m", "osm_onderstation_aantal", "osm_zonnepark_vermogen_kw"]
+alternatives = ["osm_hoogspanning_afstand_min_km", "osm_hoogspanning_kabel_lengte_m", "osm_jachthaven_aantal"]
+covers = ["osm_hoogspanning_*", "osm_onderstation_*", "osm_zonnepark_*", "osm_jachthaven_*"]
+trend = "no"
+note = "Latest OSM extract repeated in every year (no history). Only >= 50 kV: overhead lines, cables (less complete) and substations; neighbourhood transformers are left out. Solar park power: about half the parks have no power tag in OSM and are estimated from their area (median kW/ha of the tagged parks). For solar park area over time use zonneparken_fraction (LGN, 2021-2025). Credit: © OpenStreetMap contributors (ODbL)."
+
+[[concept]]
+name = "Public charging points (NDW)"
+use = ["laad_punten_aantal", "laad_punten_snel_aantal"]
+covers = ["laad_*"]
+trend = "no"
+note = "NDW register of public charging points (all operators), one snapshot repeated in every year: the network grew strongly since 2018, so the early years are far too high. Fast = maximum power >= 50 kW. Private home chargers are not included."

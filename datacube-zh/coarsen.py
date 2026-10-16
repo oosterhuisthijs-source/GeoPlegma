@@ -17,6 +17,7 @@ res 9, not via res 8, so weights stay exact). Rules per column (`rule_for`):
 - `*_min` / `*_max`                                     -> min / max
 - wind turbines (`WIND_RULES`)                          -> count/power summed, heights max, distance min
 - OSM line lengths (`osm_*_lengte_m`)                   -> sum
+- OSM grid/solar/marinas, NDW charging (`STATIC_RULES`) -> counts and power summed, distance min
 - categories (dominant class, Natura 2000, soil, buurt)  -> area-weighted majority; buurt/wijk/gemeente
                                                            and code/name pairs come from the same child value
 - flags (bool)                                          -> true if any child is true
@@ -59,6 +60,9 @@ TESSERA_WEIGHT = {
 }
 WIND_RULES = {"wind_aantal": "sum", "wind_vermogen_kw": "sum", "wind_ashoogte_max_m": "max",
               "wind_rotordiameter_max_m": "max", "wind_tiphoogte_max_m": "max", "wind_afstand_min_km": "min"}
+STATIC_RULES = {"osm_hoogspanning_afstand_min_km": "min", "osm_onderstation_aantal": "sum",
+                "osm_zonnepark_vermogen_kw": "sum", "osm_jachthaven_aantal": "sum",
+                "laad_punten_aantal": "sum", "laad_punten_snel_aantal": "sum"}
 
 
 def log(*a):
@@ -79,6 +83,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return "max", None
     if name in WIND_RULES:
         return WIND_RULES[name], None
+    if name in STATIC_RULES:
+        return STATIC_RULES[name], None
     if name.startswith("osm_") and name.endswith("_lengte_m"):
         return "sum", None
     if name.startswith("tessera_"):

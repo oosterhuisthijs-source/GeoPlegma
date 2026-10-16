@@ -162,6 +162,27 @@ OSM_INFO = {
     "osm_spoor_overig_lengte_m": "lengte emplacement-, opstel- en raccordementsporen (railway=rail met service-tag)",
     "osm_metro_tram_lengte_m": "lengte metro-, lightrail- en tramspoor (railway=subway/light_rail/tram)",
 }
+OSM_EXTRA_SOURCE = ("OpenStreetMap (Geofabrik netherlands-latest.osm.pbf, stand {stamp}), © OpenStreetMap contributors, "
+                    "ODbL; prepare/osm_extra.py")
+OSM_EXTRA_INFO = {
+    "osm_hoogspanning_lengte_m": ("m", "lengte bovengrondse hoogspanningslijn >= 50 kV (power=line) binnen de cel, elke "
+                                  "lijn (mastenrij) een keer; exacte lengte (lijn x zeshoek in RD)"),
+    "osm_hoogspanning_kabel_lengte_m": ("m", "lengte ondergrondse of onderwater hoogspanningskabel >= 50 kV (power=cable) "
+                                        "binnen de cel; kabels zijn in OSM minder volledig dan lijnen"),
+    "osm_hoogspanning_afstand_min_km": ("km", "afstand van het celcentrum tot de dichtstbijzijnde bovengrondse "
+                                        "hoogspanningslijn >= 50 kV (heel NL)"),
+    "osm_onderstation_aantal": ("aantal", "hoogspanningsstations >= 50 kV (power=substation) waarvan het midden in de cel "
+                                "ligt; wijk- en buurttrafo's ontbreken grotendeels in OSM en tellen niet mee"),
+    "osm_zonnepark_vermogen_kw": ("kW", "nominaal vermogen van zonneparken (power=plant, plant:source=solar), verdeeld naar "
+                                  "oppervlakteaandeel; parken zonder vermogen in OSM (ongeveer de helft) krijgen hun "
+                                  "oppervlak x het mediane kW/ha van de parken met vermogen"),
+    "osm_jachthaven_aantal": ("aantal", "jachthavens (leisure=marina) waarvan het midden in de cel ligt"),
+}
+LAAD_SOURCE = "NDW open data, charging_point_locations.geojson.gz (stand {stamp}); prepare/laadpalen.py"
+LAAD_INFO = {
+    "laad_punten_aantal": ("aantal", "publieke laadpunten op laadlocaties waarvan het punt in de cel ligt"),
+    "laad_punten_snel_aantal": ("aantal", "waarvan snelladers (maximaal vermogen >= 50 kW)"),
+}
 
 
 def load_lbm(work: Path, year: int) -> pa.Table | None:
@@ -275,6 +296,7 @@ def valid_shares(table: pa.Table) -> dict:
 
 
 OSM_STAMP = None  # OSM extract timestamp, set in main() from work/layers/osm.parquet
+LAAD_STAMP = None  # NDW snapshot, set in main() from work/layers/laadpalen.parquet
 
 
 def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -> dict:
@@ -395,6 +417,12 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name.startswith("wind_"):
             src = WIND_SOURCE
             unit, agg = WIND_INFO[name]
+        elif name in OSM_EXTRA_INFO:
+            src = OSM_EXTRA_SOURCE.format(stamp=osm_stamp)
+            unit, agg = OSM_EXTRA_INFO[name]
+        elif name in LAAD_INFO:
+            src = LAAD_SOURCE.format(stamp=LAAD_STAMP or "onbekend")
+            unit, agg = LAAD_INFO[name]
         elif name.startswith("osm_"):
             src, unit = OSM_SOURCE.format(stamp=osm_stamp), "m"
             agg = OSM_INFO[name] + "; exacte lengte binnen de cel (lijn x zeshoek in RD), tunnels en bruggen inbegrepen"
@@ -440,6 +468,9 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name.startswith("wind_"):
             entry["warning"] = ("statisch: de turbines van januari 2026 in elk jaar (geen bouwjaar in de bron), dus turbines "
                                 "die na 2018 zijn gebouwd staan ook in de vroege jaren en gesloopte turbines ontbreken")
+        elif name in OSM_EXTRA_INFO or name in LAAD_INFO:
+            entry["warning"] = ("statisch: de stand van nu in elk jaar (geen historie in deze bron), dus geen trend; "
+                                "laadpunten en zonneparken zijn sinds 2018 sterk gegroeid")
         elif name.endswith("_share_dc"):
             entry["warning"] = "corrigeert voor ruis per jaarpaar, maar haalt daarmee ook echte provinciebrede verandering weg"
         manifest[name] = entry
@@ -470,7 +501,7 @@ def main():
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
-    for layer in ("wind", "osm"):
+    for layer in ("wind", "osm", "osm_extra", "laadpalen"):
         if (work / f"layers/{layer}.parquet").exists():
             base = left_join(base, pq.read_table(work / f"layers/{layer}.parquet"), "h3_id")
     lgn = lgn_columns(work)
@@ -478,6 +509,9 @@ def main():
     if (work / "layers/osm.parquet").exists():
         meta = json.loads(pq.read_schema(work / "layers/osm.parquet").metadata[b"datacube"])
         OSM_STAMP = meta["osm_timestamp"]
+    global LAAD_STAMP
+    if (work / "layers/laadpalen.parquet").exists():
+        LAAD_STAMP = json.loads(pq.read_schema(work / "layers/laadpalen.parquet").metadata[b"datacube"])["snapshot"][:10]
 
     if args.year:
         t = build_year(work, args.year, base, lgn)

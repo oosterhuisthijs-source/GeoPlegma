@@ -18,7 +18,10 @@ so there is no second list to keep in sync; the version available is read from t
     rivm_<layer>  config/static.toml WCS coverage id     WCS GetCapabilities: same id with newer dates
     wind          prepare/wind.py LAYER                  RIVM WFS GetCapabilities: same layer with a newer date
     osm           work/layers/osm.parquet timestamp      Geofabrik extract Last-Modified (only listed: OSM
-                                                         changes daily, refresh when convenient)
+                                                         changes daily, refresh when convenient; also
+                                                         used by prepare/osm_extra.py)
+    ndw           sources/ndw/last_modified.txt          NDW charging points Last-Modified (only listed:
+                                                         updated daily, refresh with laadpalen.py --refresh)
 
 Prints a table and writes <data>/sources_check.json. "NEW" = a newer version for a year the cube
 has (or, for CBS vk100, a new year: that is what extends the cube); "+" = a year after the cube's
@@ -233,13 +236,23 @@ def check_osm(data: Path) -> dict:
     used = json.loads(pq.read_schema(f).metadata[b"datacube"])["osm_timestamp"] if f.exists() else "not prepared"
     remote = last_modified("https://download.geofabrik.de/europe/netherlands-latest.osm.pbf")
     return result(f"extract {used[:10]}", f"extract {remote.date()}", [],
-                  "OpenStreetMap changes daily; not flagged NEW, refresh with prepare/osm.py when convenient")
+                  "OpenStreetMap changes daily; not flagged NEW, refresh with prepare/osm.py and osm_extra.py "
+                  "when convenient")
+
+
+def check_ndw(data: Path) -> dict:
+    f = data / "sources/ndw/last_modified.txt"
+    used = f.read_text().strip()[:10] if f.exists() else "not prepared"
+    remote = last_modified("https://opendata.ndw.nu/charging_point_locations.geojson.gz")
+    return result(f"snapshot {used}", f"snapshot {remote.date()}", [],
+                  "NDW charging points change daily; not flagged NEW, refresh with prepare/laadpalen.py --refresh")
 
 
 CHECKS = {
     "cbs_vk100": check_cbs_vk100, "wijkbuurt": check_wijkbuurt, "leefbaarometer": check_leefbaarometer,
     "nbbg": check_nbbg, "brp": check_brp, "lgn": check_lgn, "tessera": check_tessera,
     "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind, "osm": check_osm,
+    "ndw": check_ndw,
 }
 
 
