@@ -186,7 +186,11 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
   Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
 
 **Separation of concerns (user's explicit wish):** GeoPlegma only *prepares* the datacube. All game /
-scenario logic lives elsewhere and reads the cube as read-only input:
+scenario logic lives elsewhere and reads the cube as read-only input. Consumers read **releases**, not
+`own_data/out`: `uv run datacube-zh/release.py --region zh --notes "..."` freezes the assembled cube into
+`own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`), checking consumer
+contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts releases;
+the game session bumps its pin. Never edit the game repos from here:
 - `~/simzh-deckgl` — the user's deck.gl version of the SimCityZH game (own TS sim, lenses, 3D BAG). Not a
   git repo. `scripts/export_cells.py` converts the cube to `public/data/cells_<year>.json`; it reads the
   **copy** at `~/Downloads/SimCityZH v0.95/_custom_data/datacube/datacube_zh`, not `own_data/out` directly.
@@ -196,16 +200,20 @@ scenario logic lives elsewhere and reads the cube as read-only input:
 
 ### Session 2026-10-16 (later) recap (pick up here)
 
-- Uncommitted work on this branch: BAG `num_*` layer (`src/bag.rs`, `prepare/bag.py`, `config/bag.toml`),
+- Drift correction is now default in `tessera_hex.py` (`tessera_change_nonagri_share_dc`; zh cube 385 cols).
+  Release setup added (`release.py`, `config/consumers.toml`); first release cut. Draft game contract +
+  handoff note for the game session: `own_data/releases/handoff/`.
+- Earlier work on this branch (committed in c67b37b): BAG `num_*` layer (`src/bag.rs`, `prepare/bag.py`, `config/bag.toml`),
   NDFF static layers, income midpoints (`cbs.rs` `category_midpoints`), heeft_kepler_data rule in
   `assemble.py`, TESSERA 2017-2021 + `--drift-correct` flag; README updated. Both cubes reassembled.
 - TESSERA findings: the non-agri "rise" 3.3 -> 5.0% is per-year input noise (no trend over 2017-2025);
   Noordwijk dunes and the Goeree wetland are transient flooding (2024 / 2023-24), Rotterdam and Lansingerland
   are real earthworks/construction. Grassland pilot: AUC 0.93-0.95 but over-predicts natural ~4x; not wired in.
-- `~/datacube`: CBS `_sum` weight fix on branch `bug/cbs-sum-source-fraction` (uncommitted, tests pass).
-  Found a bigger CBS bug: `h3_polyfillash3` only assigns a hex when its centre is in the 100m square, so 88%
-  of squares get no hex and sums are ~8-10x low even after the weight fix (likely the real cause of the
-  ~1/10 factor in `own_data`). Not fixed yet (user decision). LGN broadcast hint: local Sedona stand-in shows
+- `~/datacube`: commit `0fc345e` on branch `bug/cbs-sum-source-fraction` (not pushed, PR needs a kanban item):
+  sum weights = intersect/square area; `h3_polyfillash3` (centroid-only: 88% of 100m squares got no hex, the
+  likely real cause of the ~1/10 factor in `own_data`) replaced by a broadcast ST_Intersects join to
+  `provinciegrens_h3`; averages no longer count null-valued squares. Verified with local Sedona on CBS 2022:
+  matches `datacube-zh` exactly (r 1.000). Downstream `_sum` values become ~8-10x larger. LGN broadcast hint: local Sedona stand-in shows
   no nested-loop fallback (auto-broadcast; forced fallback = RangeJoin, ~2.7x slower) -> code left unchanged;
   real proof needs `.explain()` in a Databricks run (local `az` account lacks feed access).
 

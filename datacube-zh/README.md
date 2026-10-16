@@ -74,6 +74,9 @@ datacube-zh/prepare/static.py --only ndff_soortendiversiteit,ndff_soortendiversi
 # 5. assemble -> out/datacube_zh (real values, Delta + parquet)
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
 uv run datacube-zh/assemble.py
+
+# 6. freeze it as an immutable release for consumers (games, ruimtelijke-assistent), see "Releases"
+uv run datacube-zh/release.py --region zh --notes "what changed"
 ```
 
 ## Layers
@@ -377,8 +380,8 @@ own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 201
 uv run datacube-zh/assemble.py --region zh
 ```
 
-- Columns (27): `tessera_pc01..pc16` + `tessera_pixels` (2018-2025); the change vs the previous year:
-  `tessera_change{,_agri,_nonagri}_{mean,share}`, `tessera_{land,agri,nonagri}_pixels`,
+- Columns (28): `tessera_pc01..pc16` + `tessera_pixels` (2018-2025); the change vs the previous year:
+  `tessera_change{,_agri,_nonagri}_{mean,share}`, `tessera_change_nonagri_share_dc`, `tessera_{land,agri,nonagri}_pixels`,
   `tessera_change_from` (2018 is compared with 2017, which is downloaded only for that). The nl cube has none.
 - PCA (92% of the hex-mean variance) and the change thresholds (p95 of 2024->2025 pixel distances:
   all land 0.368, non-agricultural 0.176) are fitted once and saved in `own_data/tessera/pca_threshold.npz`;
@@ -416,11 +419,15 @@ What it shows (validated against BRP, NBBG, CBS, PDOK aerial photos):
   19-20 3.0%, 20-21 4.5%, 21-22 6.8%, 22-23 3.3%, 23-24 4.1%, 24-25 5.0%) without a trend; the earlier
   "rise" 3.3 -> 5.0% is this input drift. Pairs with 2017, 2021 or 2024 read high. Agri/all-land shares
   carry the same noise (~11-12% agri 2022-25, 6.8-11.6% before).
-- `--drift-correct` (not used for the cube by default) writes `tessera_change_nonagri_share_dc`: the non-agri
-  threshold per pair is scaled by p90(non-agri distances of the pair) / p90(of 2024->2025) (0.1386, in
-  `own_data/tessera/drift_ref.npz`); this is close to quantile-matching a stable reference class. Province
-  share then 4.7-5.9% for every pair (stable built-up spread 1.8x instead of 6x). Output for testing:
-  `own_data/work/tessera_dc/`. Use it (or the raw share within one pair) when comparing years.
+- Drift correction (default; `--no-drift-correct` skips it) adds `tessera_change_nonagri_share_dc`: the
+  non-agri threshold per pair is scaled by p90(non-agri distances of the pair) / p90(of 2024->2025) (0.1386,
+  in `own_data/tessera/drift_ref.npz`). Since ~95% of pixels don't really change, the bulk of a pair's
+  distances measures that pair's noise level, so this asks "changed unusually much for this pair" instead
+  of "moved more than a fixed amount"; it is close to quantile-matching a stable reference class. Province
+  share then 4.7-5.9% for every pair (stable built-up spread 1.8x instead of 6x); construction sites keep
+  their signal. Use `_dc` for time series; the raw `_share` columns are fine within one pair. Caveat: real
+  province-wide change is normalised away too. Non-agri only (crop rotation is real change). The manifest
+  warns on the raw `_share` columns.
 - Analysis scripts, aerial montages and a stride-3 pixel sample of all 36 year pairs:
   `own_data/work/tessera_analysis/`.
 
@@ -430,3 +437,30 @@ splits grassland into agricultural vs natural (BRP 265/266 vs 331/332/1926 label
 519 km2 natural vs 131 km2 BRP-natural (12% of BRP 265 parcels; spot checks show wet/extensive meadows, so
 it reads management intensity, not registration). Needs calibration (threshold ~0.8 matches the BRP prior,
 precision 0.70 / recall 0.72) before a per-hex "extensive grassland" column is worth adding.
+
+## Releases (`release.py`)
+
+`out/` is a working build that changes whenever a layer is rebuilt. Consumers (the SimCityZH games,
+ruimtelijke-assistent) read an immutable **release** instead and pin its version, so cube development
+never reaches them by accident.
+
+```bash
+uv run datacube-zh/release.py --region zh --notes "TESSERA 2018-2021 + drift correction"   # --dry-run to preview
+```
+
+- Writes `own_data/releases/datacube_<region>/<version>/` (version = date, `YYYY.MM.DD`, or `--version`):
+  copies of the Delta table, parquet, `.columns.json` (and for zh the 0-255 `volledige_tijdreeks_delta`),
+  plus `manifest.json` (git commit, assembly time, rows/columns/years, sources per column group, sha256 of
+  every file, contract results), `stats.json` (per column and year: non-null share, min, max, mean) and
+  `diff.md` (vs the previous release: columns added/removed/retyped, years, mean shifts > 5% and non-null
+  shifts > 0.02). Files are made read-only; an existing version is never overwritten.
+- `releases/datacube_<region>/latest` points at the newest release; `CHANGELOG.md` gets one entry per release.
+- Refuses to release with uncommitted changes in `datacube-zh/` (`--allow-dirty` overrides, recorded), so
+  every release maps to a commit.
+- **Contracts** (`config/consumers.toml`): each consumer keeps a contract in its own repo listing the
+  columns it reads (type, optional min/max/max_null_share, years). A release that breaks one is refused
+  unless `--allow-breaking`, which is recorded. Removed/retyped columns or years also mark a release
+  breaking. A meaning change with the same name and type (like the CBS `_sum` fix) is not detected
+  automatically: say so in `--notes`, and prefer a new column name for such changes.
+- Consumers: pin a version (e.g. a `cube.lock` with the release path), read only from there, and read
+  `diff.md` + `CHANGELOG.md` before bumping the pin.

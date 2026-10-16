@@ -25,7 +25,7 @@ LAND pixels only:
                              by crop rotation; non-agricultural change (built-up, nature, infrastructure) has
                              its own fixed threshold (p95 of non-agricultural pixel distances, first pair).
     tessera_change_from      the base year of the comparison (a 2-year gap gives larger distances)
---drift-correct (optional, adds columns; default outputs unchanged):
+Drift correction (on by default; --no-drift-correct skips it):
     tessera_change_nonagri_share_dc   the non-agri share with each pair's threshold multiplied by
                              p90(non-agri distance of this pair) / p90(non-agri distance of the fit pair).
                              Reason: every year's embedding carries its own noise level (median pixel distance of
@@ -193,10 +193,10 @@ def main():
     ap.add_argument("--data", default="own_data")
     ap.add_argument("--tess", default="own_data/tessera")
     ap.add_argument("--refit", action="store_true", help="refit PCA + threshold even if pca_threshold.npz exists")
-    ap.add_argument("--drift-correct", action="store_true",
-                    help="also write tessera_change_nonagri_share_dc: the non-agri share with a per-pair threshold scaled by "
-                         "this pair's p90 non-agricultural pixel distance relative to the threshold-fit pair "
-                         "(removes the year-specific input noise level; default columns are unchanged)")
+    ap.add_argument("--no-drift-correct", dest="drift_correct", action="store_false",
+                    help="skip tessera_change_nonagri_share_dc (the non-agri share with a per-pair threshold scaled by "
+                         "this pair's p90 non-agricultural pixel distance relative to the threshold-fit pair, which "
+                         "removes the year-specific input noise level; the other columns don't depend on it)")
     ap.add_argument("--layers-dir", default=None, help="output directory (default <data>/work/layers)")
     args = ap.parse_args()
     layers = args.layers_dir or f"{args.data}/work/layers"

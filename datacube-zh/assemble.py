@@ -349,7 +349,11 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                     part = ("landbouw (BRP-percelen; vooral gewasrotatie)" if "_agri_" in name
                             else "niet-landbouw (bebouwing, natuur, infrastructuur)" if "_nonagri_" in name else "alle land")
                     agg = (f"gemiddelde cosinusafstand per pixel t.o.v. het vorige jaar, {part}" if name.endswith("_mean")
-                           else f"aandeel pixels boven een vaste drempel (p95 van 2024->2025), {part}")
+                           else f"aandeel pixels boven een vaste drempel (p95 van 2024->2025), {part}" if name.endswith("_share")
+                           else f"aandeel pixels boven een drempel die per jaarpaar is geschaald naar het ruisniveau van dat "
+                                f"paar (p90 niet-landbouwafstanden t.o.v. 2024->2025), {part}; gebruik deze om jaren te vergelijken")
+                    if name.endswith("_share_dc"):
+                        unit = "0-1"
         elif name.startswith("ndff_"):
             src = ("NDFF soortendiversiteit per kilometerhok (BIJ12, editie 2017-11-15; NDFF-waarnemingen "
                    "van de 10 jaar ervoor, 8 soortgroepen, gecorrigeerd voor waarneemintensiteit), "
@@ -382,6 +386,12 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         entry = {"source": src, "unit": unit, "aggregation": agg, "type": str(field.type), "non_null_share_per_year": per_year}
         if name in LGN_SUSPECT_2022:
             entry["warning"] = "2022 (en 2023) waarden te laag: LGN2022-codes niet gemapt in de Databricks-export"
+        if name.startswith("tessera_change") and name.endswith("_share"):
+            entry["warning"] = ("niet vergelijken tussen jaren: elk jaar heeft een eigen ruisniveau in de invoer (2017, 2021 "
+                                "en 2024 zijn ruiziger), dus het aandeel springt per jaarpaar zonder echte trend; gebruik "
+                                "tessera_change_nonagri_share_dc voor tijdreeksen")
+        elif name.endswith("_share_dc"):
+            entry["warning"] = "corrigeert voor ruis per jaarpaar, maar haalt daarmee ook echte provinciebrede verandering weg"
         manifest[name] = entry
     return manifest
 

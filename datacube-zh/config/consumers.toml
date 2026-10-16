@@ -1,0 +1,11 @@
+# Consumers of datacube releases (release.py), per region. Each consumer owns its contract file in its own
+# repo: the columns it reads, with expected type and optional min / max / max_null_share and the years it
+# needs. release.py refuses a release that breaks a contract (unless --allow-breaking); a missing contract
+# file is reported as "not checked".
+#
+# Contract format (JSON):
+#   {"consumer": "...", "years": [2018, ...],
+#    "columns": {"<column>": {"type": "double", "min": 0, "max": 1, "max_null_share": 0.2}, ...}}
+
+[zh.simzh-deckgl]
+contract = "~/simzh-deckgl/cube_contract.json"
