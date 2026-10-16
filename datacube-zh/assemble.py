@@ -81,6 +81,10 @@ LGN_WARNINGS = {
     "kale_grond_in_bebouwd_gebied_fraction": "alleen 2018-2020 gekarteerd (2022 in de legenda maar 0)",
     "zout_water_fraction": "LGN2018-2020 karteren de zee minder ver uit de kust: kustcellen alleen vergelijken vanaf 2021",
     "zoet_water_fraction": "LGN2022 en later karteren meer zoet water (ZH: 443 -> 509 -> 566 km2 in 2021-2023), deels methode",
+    # Not LGN, but the same kind of warning: two editions of the RIVM noise map.
+    "geluid_lden_2022": ("niet zomaar als verandering t.o.v. geluid_lden (2020) lezen: ZH gemiddeld 1,8 dB stiller, 26% van de "
+                         "cellen > 3 dB stiller en 6% > 3 dB luider, terwijl 2020 een coronajaar was; het verschil is "
+                         "grotendeels rekenmethode/invoer van RIVM, niet gemeten verandering"),
 }
 
 

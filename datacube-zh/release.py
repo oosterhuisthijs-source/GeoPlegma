@@ -14,7 +14,10 @@ Writes <data>/releases/datacube_<region>/<version>/:
                   sha256 + size of every file, contract results, notes
 - stats.json      per column and year: non-null share, min, max, mean (numeric) / distinct (string)
 - diff.md         what changed vs the previous release (columns added/removed/retyped, years, null-share
-                  and mean shifts), for the consumer to read before bumping its pin
+                  and mean shifts), plus year-to-year steps WITHIN this release (province mean jumping and
+                  coming back, sudden steps, columns going empty): mostly source/method changes, not real
+                  change; for the consumer to read before bumping its pin
+- GUIDE.md        which column to use for what, and which are safe for trends (config/guide.toml)
 
 and updates <data>/releases/datacube_<region>/latest (symlink) and CHANGELOG.md.
 
@@ -27,6 +30,7 @@ Usage: uv run datacube-zh/release.py [--region zh] [--version YYYY.MM.DD] [--not
 """
 import argparse
 import datetime as dt
+import fnmatch
 import hashlib
 import json
 import os
@@ -142,7 +146,64 @@ def diff(prev_columns: dict, prev_stats: dict, columns: dict, stats: dict) -> di
             "years_removed": sorted(prev_years - years), "shifts": shifts}
 
 
-def diff_markdown(version: str, prev: str | None, d: dict | None, contracts: dict, breaking: bool) -> str:
+SPIKE, STEP = 0.15, 0.2  # year-to-year change of the province mean, as a share of the column's largest mean
+
+
+def year_steps(columns: dict, stats: dict) -> list[dict]:
+    """Year-to-year jumps of the province mean within this release: a 'spike' (up and back, or down and
+    back) or a 'step' (a jump > STEP that is > 3x the column's usual change), and columns that go
+    empty from a year on. These are usually a source edition or method change, not real change."""
+    out = []
+    for col, per_year in stats.items():
+        years = sorted(per_year)
+        nn = [per_year[y]["non_null"] for y in years]
+        for i in range(1, len(years)):
+            if nn[i - 1] > 0.05 and nn[i] == 0 and all(x == 0 for x in nn[i:]):
+                out.append({"column": col, "year": int(years[i]), "kind": "empty", "detail": f"empty from {years[i]}"})
+        pts = [(y, per_year[y].get("mean")) for y in years if per_year[y].get("mean") is not None]
+        if len(pts) < 3:
+            continue
+        scale = max(abs(m) for _, m in pts)
+        if scale == 0 or (col.endswith("_fraction") and scale < 1e-3):
+            continue  # rare classes (< 0.1% of the region): their jumps don't matter
+        d = [(pts[i][0], (pts[i][1] - pts[i - 1][1]) / scale) for i in range(1, len(pts))]
+        typical = sorted(abs(x) for _, x in d)[len(d) // 2]
+        spiked = set()
+        for i in range(len(d) - 1):
+            (y, a), (_, b) = d[i], d[i + 1]
+            if abs(a) >= SPIKE and abs(b) >= SPIKE and a * b < 0:
+                spiked.update({i, i + 1})
+                vals = " -> ".join(f"{m:.4g}" for _, m in pts[i:i + 3])
+                out.append({"column": col, "year": int(y), "kind": "spike", "detail": f"{y} jumps and comes back ({vals})"})
+        for i, (y, a) in enumerate(d):
+            if i not in spiked and abs(a) >= STEP and abs(a) >= 3 * typical:
+                out.append({"column": col, "year": int(y), "kind": "step",
+                            "detail": f"step in {y} ({pts[i][1]:.4g} -> {pts[i + 1][1]:.4g})"})
+    return out
+
+
+def load_guide() -> list[dict]:
+    return tomllib.loads((HERE / "config/guide.toml").read_text())["concept"]
+
+
+def guide_markdown(name: str, version: str, columns: dict) -> str:
+    """config/guide.toml as GUIDE.md, with columns this cube lacks marked."""
+    lines = [f"# {name} {version}: which column to use for what", "",
+             "Pick ONE source per concept; the cube has several for some concepts, with different definitions.",
+             "Trend: **ok** = year-to-year differences are real change; **care** = mostly real, with a known step "
+             "or gap; **no** = static or dominated by edition/method changes.",
+             "Per-column warnings are in the `.columns.json`; detected steps in `diff.md`.", ""]
+    tag = lambda c: f"`{c}`" if c in columns else f"~~`{c}`~~ (not in this cube)"  # noqa: E731
+    for c in load_guide():
+        lines += [f"## {c['name']} (trend: **{c['trend']}**)", "", "Use: " + ", ".join(tag(x) for x in c["use"])]
+        if c.get("alternatives"):
+            lines.append("Alternatives: " + ", ".join(tag(x) for x in c["alternatives"]))
+        lines += ["", c["note"], ""]
+    return "\n".join(lines)
+
+
+def diff_markdown(version: str, prev: str | None, d: dict | None, contracts: dict, breaking: bool,
+                  steps: list[dict] | None = None, columns: dict | None = None) -> str:
     lines = [f"# datacube release {version}", ""]
     if d is None:
         lines += ["First release (nothing to compare with).", ""]
@@ -163,6 +224,34 @@ def diff_markdown(version: str, prev: str | None, d: dict | None, contracts: dic
             lines.append("")
         if not any(d[k] for k in ("added", "removed", "retyped", "years_added", "years_removed", "shifts")):
             lines += ["No schema or value changes above the thresholds.", ""]
+    if steps:
+        cols = columns or {}
+        documented = {c for c, m in cols.items() if m.get("warning")}
+        for g in load_guide():
+            documented |= set(g["use"] + g.get("alternatives", []))
+            documented |= {c for c in cols for pat in g.get("covers", []) if fnmatch.fnmatch(c, pat)}
+            if g.get("covers_source"):
+                documented |= {c for c, m in cols.items() if (m.get("source") or "").startswith(g["covers_source"])}
+        empty, by_col = {}, {}
+        for st in steps:
+            if st["kind"] == "empty":
+                empty.setdefault(st["year"], []).append(st["column"])
+            else:
+                by_col.setdefault(st["column"], []).append(st["detail"])
+        new = sorted(c for c in set(by_col) | {c for cs in empty.values() for c in cs} if c not in documented)
+        lines += [f"## Year-to-year steps within this release ({len(by_col)} columns with jumps, "
+                  f"{sum(map(len, empty.values()))} going empty; {len(new)} not documented)", "",
+                  "Province mean jumping and coming back, a sudden step, or a column going empty: usually a source "
+                  "edition or method change, not real change. Don't derive trends or events from these years. "
+                  "[documented] = explained by a column warning or GUIDE.md; **new** = not explained yet.", ""]
+        if new:
+            lines += ["New, not documented: " + ", ".join(f"`{c}`" for c in new), ""]
+        for c, v in sorted(by_col.items()):
+            lines.append(f"- `{c}`: " + "; ".join(v) + (" [documented]" if c in documented else " **new**"))
+        for y, cs in sorted(empty.items()):
+            lines.append(f"- empty from {y} ({len(cs)} columns): " + ", ".join(f"`{c}`" for c in sorted(cs)[:12])
+                         + (f" and {len(cs) - 12} more" if len(cs) > 12 else ""))
+        lines.append("")
     lines += ["## Consumer contracts", ""]
     for name, res in contracts.items():
         if res is None:
@@ -233,7 +322,9 @@ def main():
         d = diff(json.loads((p / f"{name}.columns.json").read_text()), json.loads((p / "stats.json").read_text()),
                  columns, stats)
     breaking = bool(broken) or bool(d and (d["removed"] or d["retyped"] or d["years_removed"]))
-    md = diff_markdown(args.version, prev, d, contracts, breaking and args.allow_breaking)
+    steps = year_steps(columns, stats)
+    md = diff_markdown(args.version, prev, d, contracts, breaking and args.allow_breaking, steps, columns)
+    guide = guide_markdown(name, args.version, columns)
     print(md)
     if broken and not args.allow_breaking:
         sys.exit("consumer contract broken (see above); fix the cube or the contract, or pass --allow-breaking")
@@ -265,11 +356,13 @@ def main():
         "columns": len(columns), "years": [int(y) for y in years],
         "sources": [{"source": s, "columns": len(c), "example": c[:3]} for s, c in groups.items()],
         "contracts": {c: ("not found" if p is None else "broken" if p else "ok") for c, p in contracts.items()},
+        "year_steps": steps,
         "files": files,
     }
     (tmp / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
     (tmp / "stats.json").write_text(json.dumps(stats, ensure_ascii=False))
     (tmp / "diff.md").write_text(md)
+    (tmp / "GUIDE.md").write_text(guide)
     for f in files_under(tmp):
         f.chmod(0o444)
     tmp.rename(dest)

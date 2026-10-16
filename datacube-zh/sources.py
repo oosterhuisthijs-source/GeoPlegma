@@ -194,12 +194,19 @@ def check_rivm(data: Path) -> dict:
     caps = {}
     for wcs in {r["wcs"] for r in layers}:
         caps[wcs] = re.findall(r"CoverageId>([^<]+)<", get(f"{wcs}?service=WCS&request=GetCapabilities&version=2.0.1"))
+    nums = lambda s: tuple(int(n) for n in re.findall(r"\d+", s))  # noqa: E731
+    stem = lambda s: re.sub(r"\d+", "#", s)  # noqa: E731
+    # Several editions of one map may be in use side by side; compare against the newest of them.
+    newest_used = {}
+    for r in layers:
+        k = (r["wcs"], stem(r["coverage"]))
+        newest_used[k] = max(newest_used.get(k, r["coverage"]), r["coverage"], key=nums)
     used, avail, newer = [], [], []
     for r in layers:
         cov = r["coverage"]
-        stem = re.sub(r"\d+", "#", cov)
-        nums = lambda s: tuple(int(n) for n in re.findall(r"\d+", s))  # noqa: E731
-        sib = [c for c in caps[r["wcs"]] if re.sub(r"\d+", "#", c) == stem]
+        if cov != newest_used[(r["wcs"], stem(cov))]:
+            continue
+        sib = [c for c in caps[r["wcs"]] if stem(c) == stem(cov)]
         best = max(sib, key=nums) if sib else cov
         used.append(f"{r['name']}: {cov}")
         if nums(best) > nums(cov):

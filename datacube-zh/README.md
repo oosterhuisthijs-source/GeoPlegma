@@ -335,6 +335,11 @@ still sum to `lgn_coverage`. Releases include these files when they are newer th
   peiljaar 2022; LGN is yearly 2018-2025 for both regions.
 - CBS sums are "the sum of published values": a hex touched only by
   suppressed squares gets 0 (not null), consistent with hexes without squares.
+  A column with no published value at all in a year (absent, or suppressed
+  everywhere, e.g. births in 2025 v1) is null in every hex, not 0.
+- Wijk- en Buurtkaart 2021 v3 has a wrong `percentage_ongehuwd` (4-5% where
+  2020/2022 have ~70-77%): recomputed as 100 - gehuwd - gescheiden - verweduwd
+  (`[[remainder]]` in config/wb.toml, applied in prepare/wb.py).
   CBS 2025 split "bouwjaar 15 en later"; `[derived]` in cbs.toml sums it back.
 - **3D BAG** (TU Delft, via Portolan NL GeoParquet on source.coop): per hex
   number of buildings (apportioned by footprint share), footprint, LoD2.2
@@ -486,6 +491,11 @@ never reaches them by accident.
 uv run datacube-zh/release.py --region zh --notes "TESSERA 2018-2021 + drift correction"   # --dry-run to preview
 ```
 
+- Every release also carries `GUIDE.md` (from `config/guide.toml`): per concept the ONE column to use,
+  alternatives, and whether year-to-year differences are real change (ok / care / no). And `diff.md` lists
+  year-to-year steps WITHIN the release (province mean spiking and coming back, sudden steps > 20% of the
+  column's range, columns going empty), each marked documented (column warning or guide) or **new**; a new
+  one means: find out whether it's real, then document it or fix the source.
 - Writes `own_data/releases/datacube_<region>/<version>/` (version = date, `YYYY.MM.DD`, or `--version`):
   copies of the Delta table, parquet, `.columns.json` (and for zh the 0-255 `volledige_tijdreeks_delta`),
   plus `manifest.json` (git commit, assembly time, rows/columns/years, sources per column group, sha256 of

@@ -226,9 +226,17 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
             OutColumn::F64(result.coverage.iter().map(|&c| Some(c)).collect()),
         ),
     ];
+    // "Sum of the published values" gives 0 for hexes whose squares are all suppressed; but a column
+    // with no published value at all this year (absent, or suppressed everywhere, e.g. births in
+    // CBS 2025 v1) is unknown, not 0, so it is null in every hex.
+    let mut unpublished = Vec::new();
     for ((name, agg), vals) in wanted.iter().zip(result.numeric) {
         let out_name = if config.plain_names { name.to_string() } else { format!("{name}_{}", agg.suffix()) };
-        columns.push((out_name, OutColumn::F64(vals)));
+        let published = numeric.get(*name).is_some_and(|v| v.iter().any(Option::is_some));
+        if !published && numeric.contains_key(*name) {
+            unpublished.push(*name);
+        }
+        columns.push((out_name, OutColumn::F64(if published { vals } else { vec![None; n] })));
     }
     for (name, vals) in config.aggregation.mode.iter().zip(result.modes) {
         columns.push((format!("{name}_mode"), OutColumn::Str(vals)));
@@ -242,6 +250,9 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
     );
     if !missing.is_empty() {
         eprintln!("  not in source this year (null): {}", missing.join(", "));
+    }
+    if !unpublished.is_empty() {
+        eprintln!("  no published value this year (null): {}", unpublished.join(", "));
     }
     if !unconfigured.is_empty() {
         eprintln!("  in source but not configured (dropped): {} columns", unconfigured.len());

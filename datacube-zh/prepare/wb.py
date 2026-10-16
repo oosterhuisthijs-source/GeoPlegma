@@ -47,6 +47,25 @@ def buurt_layer(gpkg: Path) -> tuple[str, set[str]]:
     return layer, fields
 
 
+def remainder(path: Path, target: str, others: list[str], sentinel: float):
+    """Replace `target` by 100 - sum(others) (a source error in that year's kaart); null if a part is missing."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    t = pq.read_table(path)
+    total, ok = None, None
+    for c in others:
+        valid = pc.and_(pc.is_valid(t[c]), pc.greater(t[c], sentinel))
+        part = pc.if_else(valid, t[c], 0.0)
+        total = part if total is None else pc.add(total, part)
+        ok = valid if ok is None else pc.and_(ok, valid)
+    fixed = pc.if_else(ok, pc.max_element_wise(pc.subtract(100.0, total), 0.0), pa.scalar(None, pa.float32()))
+    t = t.set_column(t.column_names.index(target), target, pc.cast(fixed, t[target].type))
+    pq.write_table(t, path, compression="zstd")
+    log(f"  {target} recomputed as 100 - ({' + '.join(others)})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="own_data")
@@ -81,6 +100,9 @@ def main():
              "-lco", "GEOMETRY_NAME=geom", "-overwrite"],
             check=True,
         )
+        for fix in cfg.get("remainder", []):
+            if year in fix["years"]:
+                remainder(out, fix["target"], fix["others"], cfg["sentinel_threshold"])
         log(f"wb {year}: {gpkg.name}:{layer} -> {out} ({len(select)} indicators"
             + (f"; not in this kaart: {', '.join(missing)}" if missing else "") + ")")
 

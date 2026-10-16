@@ -1,0 +1,152 @@
+# Which column to use for what: rendered into GUIDE.md in every release (release.py), which also
+# checks that every column named here exists in the cube. The cube carries several sources for some
+# concepts, with different definitions; a consumer should pick ONE per concept. `trend` says whether
+# year-to-year differences are real change:
+#   ok    = consistent source and method over the cube's years
+#   care  = mostly real, with a known step or gap (see note)
+#   no    = differences are dominated by method/edition changes or the column is static
+#
+# Per-column warnings are in <cube>.columns.json; detected steps per release are in diff.md.
+# `covers` (glob patterns) and `covers_source` (start of a column's source) list the further columns a
+# concept's note applies to, so release.py can tell documented steps from new ones.
+
+[[concept]]
+name = "Inhabitants, age groups, households"
+use = ["aantal_inwoners_sum", "aantal_inwoners_0_tot_15_jaar_sum", "aantal_inwoners_65_jaar_en_ouder_sum", "aantal_part_huishoudens_sum"]
+covers = ["aantal_*_sum", "cbs_coverage"]
+trend = "care"
+note = "CBS 100 m squares, real totals. 2025 is CBS's preliminary v1: more suppressed squares (count as 0), births not published (empty), and ~30% more squares listed (cbs_coverage 0.17 -> 0.22, mostly squares without residents): treat 2025 as provisional."
+
+[[concept]]
+name = "Number of homes"
+use = ["num_woonfunctie"]
+alternatives = ["aantal_woningen_sum"]
+trend = "ok"
+note = "BAG addresses with a residential function on 1 January, exact counts every year. CBS aantal_woningen_sum agrees (r 0.995) but has suppressed squares; use it only next to other CBS columns of the same square."
+
+[[concept]]
+name = "Housing stock by construction period, ownership, energy use"
+use = ["aantal_woningen_bouwjaar_voor_1945_sum", "percentage_koopwoningen_area_weighted_average", "gemiddeld_gasverbruik_woning_area_weighted_average"]
+covers = ["aantal_woningen_*", "percentage_koop*", "percentage_huur*", "gemiddeld_*_woning_*"]
+trend = "care"
+note = "CBS squares. CBS changed the construction-period classes in 2025 (15_en_later is summed back from 15_tot_25 + 25_en_later). Gas and electricity use are not published in 2025 (empty)."
+
+[[concept]]
+name = "House value"
+use = ["gemiddelde_woz_waarde_woning_area_weighted_average"]
+alternatives = ["wb_gemiddelde_woningwaarde"]
+trend = "ok"
+note = "CBS squares, x 1000 euro. The wb_ version is per buurt (coarser)."
+
+[[concept]]
+name = "Income and poverty"
+use = ["wb_gemiddeld_inkomen_per_inwoner", "wb_perc_huishoudens_laag_inkomen"]
+alternatives = ["mediaan_inkomen_huishouden_area_weighted_average"]
+trend = "care"
+covers = ["wb_*", "mediaan_inkomen_*"]
+note = "Buurt level (wb_), 2018-2023 only; 2024-2025 empty (not published yet): carry 2023 forward game-side. All wb_ indicators arrive with a delay (income/labour/wealth empty from 2024, most others from 2025), and CBS changed the wealth and purchasing-power definitions in 2022 (wb_mediaan_vermogen_huishoudens +27%, wb_perc_huishoudens_lage_koopkracht -40%). Wijk- en Buurtkaart 2021 has a wrong percentage unmarried; the cube recomputes it from the other three marital-status shares. The per-square median income class exists only for 2018-2019, do not use it for trends."
+
+[[concept]]
+name = "Liveability"
+use = ["lbm_score", "lbm_fysieke_omgeving", "lbm_overlast_onveiligheid"]
+trend = "care"
+note = "Leefbaarometer is measured every 2 years (2018/2020/2022/2024); odd years repeat the previous measurement (lbm_source_year), so values step every other year."
+
+[[concept]]
+name = "Distance to services"
+use = ["dichtstbijzijnde_huisartsenpraktijk_afstand_in_km_min", "dichtstbijzijnde_basisonderwijs_afstand_in_km_min", "dichtstbijzijnde_grote_supermarkt_afstand_in_km_min"]
+trend = "care"
+covers = ["dichtstbijzijnde_*", "*_aantal_binnen_*"]
+note = "All dichtstbijzijnde_* and *_aantal_binnen_* are empty in 2025 (CBS v1 has no distances) and huisartsenpost also in 2024: carry the last year forward game-side. Null also means 'no residents in the square', not 'far away'."
+
+[[concept]]
+name = "Land use, per year (cover)"
+use = ["lgn_groep_agrarisch_grasland", "lgn_groep_akkerbouw", "lgn_groep_bebouwing", "lgn_groep_wegen", "lgn_groep_stedelijk_groen", "lgn_groep_bos", "lgn_groep_natuur_open", "lgn_groep_water"]
+covers = ["lgn_groep_*"]
+covers_source = "LGN"
+alternatives = ["landgebruiksklasse", "agrarisch_gras_fraction"]
+trend = "care"
+note = "LGN groups sum to lgn_coverage. Single LGN classes jump with LGN's method: LGN2021 remapped nature, forest and the coast (bos +39%, kwelders x5, struikvegetatie), split roads into 3 classes; LGN2022 has +50% roads; class 45 natural grassland nearly vanishes in 2022-2023. Use the groups for time series, and even then treat lgn_groep_wegen 2022 and the 2021 nature/forest groups as method steps."
+
+[[concept]]
+name = "Land use, functional (residential, business, recreation)"
+use = ["bbg_woonterrein_fraction", "bbg_bedrijfsterrein_fraction"]
+covers = ["bbg_*"]
+trend = "no"
+note = "CBS NBBG has two editions (2020, 2022): 2018-2021 repeat 2020, 2022-2025 repeat 2022 (bbg_source_year). NBBG counts whole sites (gardens, streets), so its built-up share is ~3x LGN's; never mix with LGN for one concept."
+
+[[concept]]
+name = "Built-up / buildings"
+use = ["bag3d_bebouwd_fraction", "bag3d_footprint_m2", "bag3d_volume_m3", "bag3d_hoogte_gem_m"]
+alternatives = ["lgn_groep_bebouwing", "num_verblijfsobjecten"]
+trend = "no"
+note = "3D BAG is one snapshot (2024) repeated in every year: building geometry, not a time series. For change in buildings over time use num_* (BAG, yearly) or lgn_groep_bebouwing."
+
+[[concept]]
+name = "Crops and agriculture"
+use = ["brp_grasland_fraction", "brp_mais_fraction", "brp_aardappelen_fraction", "brp_coverage"]
+covers = ["brp_*"]
+alternatives = ["lgn_groep_akkerbouw"]
+trend = "ok"
+note = "BRP registered parcels, yearly and consistent (LGN takes its crops from BRP). brp_coverage = share of the cell that is registered farmland. Small groups follow policy: the 2023 CAP rules (4% non-productive land) raised braak and voedergewassen and shrank 'overig'; those are real, rule-driven changes."
+
+[[concept]]
+name = "Grassland for nitrogen (intensive vs extensive)"
+use = ["brp_grasland_fraction", "brp_natuurlijk_grasland_fraction"]
+alternatives = ["lgn_groep_agrarisch_grasland"]
+trend = "ok"
+note = "Use BRP for the intensive/extensive split: it is registered per parcel every year. Do NOT use LGN class 45 (natuurlijk_beheerde_agrarische_graslanden / natuurgraslanden) for trends: LGN maps most of it as agrarisch gras in 2022-2023."
+
+[[concept]]
+name = "Nature"
+use = ["natura2000_id", "lgn_groep_natuur_open", "lgn_groep_bos", "ndff_soortendiversiteit_klasse"]
+trend = "no"
+note = "Natura 2000 and NDFF are static; the LGN groups are yearly (see land use)."
+
+[[concept]]
+name = "Noise"
+use = ["geluid_lden"]
+alternatives = ["geluid_lden_2022"]
+trend = "no"
+note = "Static RIVM maps. Pick ONE edition per game; do not read the difference as change (2022 is 1.8 dB quieter on average, mostly method)."
+
+[[concept]]
+name = "Heat, green, water storage, flooding, ground level"
+use = ["hitte", "groenklasse", "waterberging", "flooddepth_1", "groundheight"]
+trend = "no"
+note = "Static maps: starting conditions, not something that changes with the years in the cube."
+
+[[concept]]
+name = "Safety hazards"
+use = ["explosieaandachtsgebied", "brandaandachtsgebied", "gifwolkaandachtsgebied"]
+trend = "no"
+note = "Static (current REV state); true if any risk zone touches the cell."
+
+[[concept]]
+name = "Observed change on the ground (satellite, zh only)"
+use = ["tessera_change_nonagri_share_dc", "tessera_change_nonagri_mean"]
+covers = ["tessera_change_*"]
+alternatives = ["tessera_pc01"]
+trend = "care"
+note = "Drift-corrected share of non-agricultural pixels that changed vs the previous year: construction sites, earthworks, flooding. Not a housing count. Raw _share columns are not comparable between years."
+
+[[concept]]
+name = "Administrative areas"
+use = ["gemeentecode", "gemeentenaam", "wijkcode", "buurtcode"]
+trend = "no"
+note = "Wijk- en Buurtkaart 2024, the same boundaries in every year."
+
+[[concept]]
+name = "Satellite fingerprint (zh only)"
+use = ["tessera_pc01", "tessera_pc02", "tessera_pc03"]
+covers = ["tessera_pc*", "tessera_*pixels"]
+trend = "no"
+note = "16 PCA components of the TESSERA embedding: what a cell looks like, for 'find similar places' WITHIN a year. Province means shift every year with the satellite input, so never use them as a time series; use the change columns for that."
+
+[[concept]]
+name = "Migration background / origin"
+use = ["percentage_geb_nederland_herkomst_nederland_area_weighted_average", "percentage_geb_nederland_herkomst_buiten_europa_area_weighted_average"]
+alternatives = ["percentage_nederlandse_achtergrond_area_weighted_average"]
+covers = ["percentage_*achtergr*", "percentage_geb_*"]
+trend = "no"
+note = "CBS replaced 'migratieachtergrond' (2018-2021) by 'herkomst' (2022 on): two classifications, no series across 2021/2022. 2025 v1 suppresses many squares (lower fill)."

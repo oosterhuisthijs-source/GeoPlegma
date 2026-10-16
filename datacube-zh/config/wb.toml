@@ -20,6 +20,14 @@ percentage_prefixes = ["wb_perc"]
 coverage_name = "wb_coverage"
 plain_names = true
 
+# Source errors fixed per year (prepare/wb.py): `target` = 100 - sum(`others`), null if any part is
+# missing. Wijk- en Buurtkaart 2021 v3 has a wrong percentage_ongehuwd (4-5% in buurten that have
+# ~70-77% in 2020 and 2022, max 1000), while gehuwd/gescheiden/verweduwd are fine.
+[[remainder]]
+years = [2021]
+target = "wb_perc_ongehuwd"
+others = ["wb_perc_gehuwd", "wb_perc_gescheiden", "wb_perc_verweduwd"]
+
 # Output name -> candidate source field names (first one present wins).
 [indicators]
 # Income and economy

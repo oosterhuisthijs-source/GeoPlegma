@@ -95,6 +95,16 @@ coverage = "alo__rivm_20220601_Geluid_lden_allebronnen_2020"
 agg = "mean"
 nodata = [-9999, -999, 0]
 
+# Newer edition, kept next to the 2020 one (games read geluid_lden). The difference is largely
+# method, not real change: over Rotterdam 2022 is ~1.5 dB quieter than 2020 (a Covid year).
+[[raster]]
+name = "geluid_lden_2022"
+description = "Geluidbelasting alle bronnen samen, Lden dB (RIVM, 2022; editie 2025-08-01)"
+wcs = "https://data.rivm.nl/geo/alo/wcs"
+coverage = "alo__rivm_20250801_Geluid_lden_allebronnen_2022"
+agg = "mean"
+nodata = [-9999, -999, 0]
+
 [[raster]]
 name = "hitte"
 description = "Stedelijk hitte-eilandeffect, gemiddelde extra temperatuur (graden C) (RIVM ANK, 2022)"
