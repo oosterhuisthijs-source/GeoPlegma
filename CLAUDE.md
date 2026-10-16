@@ -225,7 +225,8 @@ Never edit the game repos from here:
   starts May 2018). Picked: KNMI climate, RIVM GCN air quality, TROPOMI NO2, RIVM nitrogen deposition. Parked by
   the user: energy use per postcode, BRO groundwater, KRW water quality, InSAR, the long res-7 cube, TESSERA for
   NL (the download in `own_data/tessera/` is Zuid-Holland only, bbox 3.75-5.15 E / 51.65-52.35 N).
-- Analyst agents live in their own repo `~/cube-analyst` (user's wish; reads releases via its `cube.lock` only):
+- Analyst agents live in their own repo `~/cube-analyst` with its own Claude session (user's wish; reads releases via
+  its `cube.lock` only; talk through `own_data/releases/handoff/ANALYST_SESSION.md`, announce releases there):
   access layer, hash-chained log, planted-truth tests. Finding: iid p-values call a random smooth field
   significant ~90% of the time, cluster-robust ~15%; hence its `placebo_p()`.
 - Plan order: Phase 0 provenance (done) -> KNMI (code done, data downloading) + GDN + GCN + TROPOMI (done) ->
