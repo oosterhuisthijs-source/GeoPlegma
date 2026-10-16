@@ -194,7 +194,9 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.12, `datacube_nl` 2026.10.16.10 (provenance per column,
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.13, `datacube_nl` 2026.10.16.11 (no data change: machine-readable known
+breaks, `[[break]]` in `config/guide.toml` -> `availability.parquet` `breaks`/`break_note` + GUIDE.md table). Before
+that, zh .12 / nl .10 added provenance per column (
 `config/provenance.toml` -> `tier`/`native_resolution`/`reference_period`/`time` + `availability.parquet`; yearly RIVM
 deposition + GCN air quality (`prepare/rivm.py`) and TROPOMI NO2 (`prepare/tropomi.py`). Before: static OSM grid/solar/
 marinas, NDW charging, OSM motorways/railways with a whole-line `datacube_<region>_lijnen.parquet`; zh .9 has a wrong
@@ -223,6 +225,9 @@ Never edit the game repos from here:
   starts May 2018). Picked: KNMI climate, RIVM GCN air quality, TROPOMI NO2, RIVM nitrogen deposition. Parked by
   the user: energy use per postcode, BRO groundwater, KRW water quality, InSAR, the long res-7 cube, TESSERA for
   NL (the download in `own_data/tessera/` is Zuid-Holland only, bbox 3.75-5.15 E / 51.65-52.35 N).
+- Analyst agents live in their own repo `~/cube-analyst` (user's wish; reads releases via its `cube.lock` only):
+  access layer, hash-chained log, planted-truth tests. Finding: iid p-values call a random smooth field
+  significant ~90% of the time, cluster-robust ~15%; hence its `placebo_p()`.
 - Plan order: Phase 0 provenance (done) -> KNMI (code done, data downloading) + GDN + GCN + TROPOMI (done) ->
   Phase 2 analyst agents in a separate repo (e.g. `~/cube-analyst`, reads releases only): explorer / tester /
   skeptic / writer roles, read-only DuckDB, change-on-change + fixed effects + spatial block bootstrap, checks at
