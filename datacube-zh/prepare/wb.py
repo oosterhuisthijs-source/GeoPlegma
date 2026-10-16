@@ -47,6 +47,62 @@ def buurt_layer(gpkg: Path) -> tuple[str, set[str]]:
     return layer, fields
 
 
+def area_values(gpkg: Path, kind: str, code: str, fields: dict[str, str], sentinel: float) -> dict[str, dict]:
+    """{column: {area code: value}} from the wijk or gemeente layer (valid values only)."""
+    import csv
+    import io
+
+    info = subprocess.run(["ogrinfo", "-q", str(gpkg)], capture_output=True, text=True, check=True).stdout
+    layer = next(m.group(1) for line in info.splitlines() if (m := re.match(rf"^\d+: (\S*{kind}\S*)", line)))
+    sel = ", ".join([code] + [f'"{f}"' for f in fields.values()])
+    raw = subprocess.run(["ogr2ogr", "-f", "CSV", "/vsistdout/", str(gpkg), "-sql", f'SELECT {sel} FROM "{layer}"'],
+                         capture_output=True, text=True, check=True).stdout
+    out = {c: {} for c in fields}
+    for row in csv.DictReader(io.StringIO(raw)):
+        for c, f in fields.items():
+            try:
+                v = float(row[f])
+            except (TypeError, ValueError):
+                continue
+            if v > sentinel:
+                out[c][row[code]] = v  # gemeenten may have land + water parts with the same code
+    return out
+
+
+def fallback(path: Path, gpkg: Path, sources: dict[str, str], sentinel: float):
+    """Fill buurten without their own value from their wijk, else their gemeente (config [fallback])."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    t = pq.read_table(path)
+    wijk = area_values(gpkg, "wijk", "wijkcode", sources, sentinel)
+    gem = area_values(gpkg, "gemeente", "gemeentecode", sources, sentinel)
+    wc, gc = t["fb_wijkcode"].to_pylist(), t["fb_gemeentecode"].to_pylist()
+    for c in sources:
+        vals, own, counts = t[c].to_pylist(), [], {"buurt": 0, "wijk": 0, "gemeente": 0, "none": 0}
+        for i, v in enumerate(vals):
+            if v is not None and v > sentinel:
+                own.append(1.0)
+                counts["buurt"] += 1
+            elif (w := wijk[c].get(wc[i])) is not None:
+                vals[i], own_v = w, 0.0
+                own.append(own_v)
+                counts["wijk"] += 1
+            elif (g := gem[c].get(gc[i])) is not None:
+                vals[i] = g
+                own.append(0.0)
+                counts["gemeente"] += 1
+            else:
+                own.append(None)
+                counts["none"] += 1
+        t = t.set_column(t.column_names.index(c), c, pa.array(vals, t[c].type))
+        t = t.append_column(f"{c}_eigen_buurt", pa.array(own, pa.float32()))
+        log(f"  {c}: own buurt {counts['buurt']}, from wijk {counts['wijk']}, from gemeente {counts['gemeente']}, "
+            f"none {counts['none']}")
+    t = t.drop_columns(["fb_wijkcode", "fb_gemeentecode"])
+    pq.write_table(t, path, compression="zstd")
+
+
 def remainder(path: Path, target: str, others: list[str], sentinel: float):
     """Replace `target` by 100 - sum(others) (a source error in that year's kaart); null if a part is missing."""
     import pyarrow as pa
@@ -92,6 +148,9 @@ def main():
                 select.append(f'CAST("{hit}" AS float) AS {name}')
             else:
                 missing.append(name)
+        fb = [c for c in cfg.get("fallback", {}).get("columns", []) if c not in missing]
+        if fb:
+            select += ["wijkcode AS fb_wijkcode", "gemeentecode AS fb_gemeentecode"]
         sql = f'SELECT {", ".join(select)} FROM "{layer}"'
         subprocess.run(
             ["ogr2ogr", "-f", "Parquet", str(out), str(gpkg), "-sql", sql, "-dialect", "OGRSQL",
@@ -100,6 +159,9 @@ def main():
              "-lco", "GEOMETRY_NAME=geom", "-overwrite"],
             check=True,
         )
+        if fb:
+            sources = {c: next(x for x in cfg["indicators"][c] if x in fields) for c in fb}
+            fallback(out, gpkg, sources, cfg["sentinel_threshold"])
         for fix in cfg.get("remainder", []):
             if year in fix["years"]:
                 remainder(out, fix["target"], fix["others"], cfg["sentinel_threshold"])

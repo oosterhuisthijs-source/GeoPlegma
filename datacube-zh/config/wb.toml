@@ -75,11 +75,21 @@ wb_omgevingsadressendichtheid = ["omgevingsadressendichtheid"]
 wb_stedelijkheid = ["stedelijkheid_adressen_per_km2"]
 wb_bevolkingsdichtheid = ["bevolkingsdichtheid_inwoners_per_km2"]
 
+# From Wijk- en Buurtkaart 2019 on, CBS publishes the average incomes for only ~14% of buurten
+# (mostly large ones; 2018: 82%); wijken ~52%, gemeenten all. A buurt without its own value takes its
+# wijk's, else its gemeente's (prepare/wb.py). `<column>_eigen_buurt` = 1 where the buurt's own value is
+# used, 0 where it was filled from wijk/gemeente: averaged per cell = share of the cell with a buurt value.
+[fallback]
+columns = ["wb_gemiddeld_inkomen_per_inwoner", "wb_gemiddeld_inkomen_per_inkomensontvanger", "wb_gestandaardiseerd_inkomen_huishoudens"]
+
 [aggregation]
 area_weighted_average = [
   "wb_gemiddeld_inkomen_per_inwoner",
+  "wb_gemiddeld_inkomen_per_inwoner_eigen_buurt",
   "wb_gemiddeld_inkomen_per_inkomensontvanger",
+  "wb_gemiddeld_inkomen_per_inkomensontvanger_eigen_buurt",
   "wb_gestandaardiseerd_inkomen_huishoudens",
+  "wb_gestandaardiseerd_inkomen_huishoudens_eigen_buurt",
   "wb_perc_personen_laag_inkomen",
   "wb_perc_personen_hoog_inkomen",
   "wb_perc_huishoudens_laag_inkomen",

@@ -146,13 +146,13 @@ def diff(prev_columns: dict, prev_stats: dict, columns: dict, stats: dict) -> di
             "years_removed": sorted(prev_years - years), "shifts": shifts}
 
 
-SPIKE, STEP = 0.15, 0.2  # year-to-year change of the province mean, as a share of the column's largest mean
+SPIKE, STEP, FILL = 0.15, 0.2, 0.25  # year-to-year change of the province mean, as a share of the column's largest mean
 
 
 def year_steps(columns: dict, stats: dict) -> list[dict]:
     """Year-to-year jumps of the province mean within this release: a 'spike' (up and back, or down and
-    back) or a 'step' (a jump > STEP that is > 3x the column's usual change), and columns that go
-    empty from a year on. These are usually a source edition or method change, not real change."""
+    back) or a 'step' (a jump > STEP that is > 3x the column's usual change), columns that go empty
+    from a year on, and 'fill' changes (the share of cells with a value changes by > FILL relative). These are usually a source edition or method change, not real change."""
     out = []
     for col, per_year in stats.items():
         years = sorted(per_year)
@@ -160,6 +160,11 @@ def year_steps(columns: dict, stats: dict) -> list[dict]:
         for i in range(1, len(years)):
             if nn[i - 1] > 0.05 and nn[i] == 0 and all(x == 0 for x in nn[i:]):
                 out.append({"column": col, "year": int(years[i]), "kind": "empty", "detail": f"empty from {years[i]}"})
+            elif nn[i] > 0 and nn[i - 1] > 0.05 and abs(nn[i] - nn[i - 1]) >= FILL * max(nn[i - 1], nn[i]):
+                # the column stays, but covers a very different share of the cells (e.g. a source that
+                # stopped publishing most areas): averages over the remaining cells are then biased
+                out.append({"column": col, "year": int(years[i]), "kind": "fill",
+                            "detail": f"filled in {nn[i - 1]:.0%} -> {nn[i]:.0%} of cells in {years[i]}"})
         pts = [(y, per_year[y].get("mean")) for y in years if per_year[y].get("mean") is not None]
         if len(pts) < 3:
             continue

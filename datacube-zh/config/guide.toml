@@ -40,11 +40,11 @@ note = "CBS squares, x 1000 euro. The wb_ version is per buurt (coarser)."
 
 [[concept]]
 name = "Income and poverty"
-use = ["wb_gemiddeld_inkomen_per_inwoner", "wb_perc_huishoudens_laag_inkomen"]
-alternatives = ["mediaan_inkomen_huishouden_area_weighted_average"]
-trend = "care"
+use = ["wb_perc_huishoudens_laag_inkomen", "wb_gemiddeld_inkomen_per_inwoner", "wb_gemiddeld_inkomen_per_inwoner_eigen_buurt"]
+alternatives = ["wb_perc_personen_laag_inkomen", "mediaan_inkomen_huishouden_area_weighted_average"]
 covers = ["wb_*", "mediaan_inkomen_*"]
-note = "Buurt level (wb_), 2018-2023 only; 2024-2025 empty (not published yet): carry 2023 forward game-side. All wb_ indicators arrive with a delay (income/labour/wealth empty from 2024, most others from 2025), and CBS changed the wealth and purchasing-power definitions in 2022 (wb_mediaan_vermogen_huishoudens +27%, wb_perc_huishoudens_lage_koopkracht -40%). Wijk- en Buurtkaart 2021 has a wrong percentage unmarried; the cube recomputes it from the other three marital-status shares. The per-square median income class exists only for 2018-2019, do not use it for trends."
+trend = "care"
+note = "Buurt level (wb_), 2018-2023 only; 2024-2025 empty (not published yet): carry 2023 forward game-side. wb_perc_huishoudens_laag_inkomen is published for buurten with ~99% of residents in every year: the most reliable income column. From 2019 on CBS publishes the AVERAGE incomes (wb_gemiddeld_inkomen_*, wb_gestandaardiseerd_*) for only ~14% of buurten; the cube fills the rest from the wijk, else the gemeente value, so these columns are complete but coarser from 2019: <column>_eigen_buurt = share of the cell with the buurt's own value (2018 ~0.8, 2019+ ~0.2 in zh). Don't read the 2018 -> 2019 change in local detail as real. All wb_ indicators arrive with a delay (income/labour/wealth empty from 2024, most others from 2025), and CBS changed the wealth and purchasing-power definitions in 2022 (wb_mediaan_vermogen_huishoudens +27%, wb_perc_huishoudens_lage_koopkracht -40%). Wijk- en Buurtkaart 2021 has a wrong percentage unmarried; the cube recomputes it from the other three marital-status shares. The per-square median income class exists only for 2018-2019, do not use it for trends."
 
 [[concept]]
 name = "Liveability"
