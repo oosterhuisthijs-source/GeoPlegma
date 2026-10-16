@@ -8,6 +8,7 @@
 //! adapter.
 
 mod admin;
+mod bag;
 mod bbg;
 mod brp;
 mod cbs;
@@ -71,6 +72,13 @@ enum Command {
         #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])]
         years: Vec<i64>,
         #[arg(long, default_value = "datacube-zh/config/brp_groups.toml")]
+        config: PathBuf,
+    },
+    /// BAG verblijfsobjecten: per-hex counts per gebruiksdoel on 1 January of each year.
+    Bag {
+        #[arg(long, value_delimiter = ',', default_values_t = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])]
+        years: Vec<i64>,
+        #[arg(long, default_value = "datacube-zh/config/bag.toml")]
         config: PathBuf,
     },
     /// Aggregate the static raster/vector layers from config/static.toml.
@@ -148,6 +156,11 @@ fn main() -> Result<()> {
                     &work.join(format!("layers/brp_{year}.parquet")),
                 )?;
             }
+        }
+        Command::Bag { years, config } => {
+            let config = bag::BagConfig::load(&config)?;
+            let hexes = grid::load_hexes(&grid_path)?;
+            bag::run(&config, &hexes, &work.join("bag/vbo.parquet"), &years, &work.join("layers"))?;
         }
         Command::Static { config, only } => {
             let config = static_layers::StaticConfig::load(&config)?;

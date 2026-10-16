@@ -1,0 +1,31 @@
+# BAG verblijfsobjecten -> per-hex counts per gebruiksdoel (`datacube-zh bag`),
+# one table per year: the state on 1 January (like the CBS squares), from the
+# LV BAG levenscyclus extract (full history; prepare/bag.py).
+#
+# Output: `total` + `num_<gebruiksdoel>` (spaces -> _), e.g. num_woonfunctie.
+# A verblijfsobject with several gebruiksdoelen counts once for each.
+
+total = "num_verblijfsobjecten"
+
+# Existing verblijfsobjecten (as for 3D BAG panden in static.toml): in use or
+# under renovation. Left out: "Verblijfsobject gevormd" (planned / under
+# construction), "buiten gebruik", "ingetrokken", "ten onrechte opgevoerd".
+statuses = [
+  "Verblijfsobject in gebruik",
+  "Verblijfsobject in gebruik (niet ingemeten)",
+  "Verbouwing verblijfsobject",
+]
+
+gebruiksdoelen = [
+  "woonfunctie",
+  "kantoorfunctie",
+  "bijeenkomstfunctie",
+  "sportfunctie",
+  "gezondheidszorgfunctie",
+  "industriefunctie",
+  "onderwijsfunctie",
+  "winkelfunctie",
+  "logiesfunctie",
+  "celfunctie",
+  "overige gebruiksfunctie",
+]

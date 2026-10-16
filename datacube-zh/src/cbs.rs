@@ -21,6 +21,11 @@ pub struct CbsConfig {
     pub complements: Vec<[String; 2]>,
     #[serde(default)]
     pub null_strings: Vec<String>,
+    /// Categorical columns whose classes start with a numeric range ("40-60
+    /// midden"): also made numeric as the range midpoint (50), under the same
+    /// name, so they can be listed under a numeric aggregation as well.
+    #[serde(default)]
+    pub category_midpoints: Vec<String>,
     #[serde(default)]
     pub rename: HashMap<String, String>,
     /// target -> source columns summed per polygon, used when a source year
@@ -69,6 +74,15 @@ impl CbsConfig {
         .flat_map(|(cols, agg)| cols.iter().map(move |c| (c.as_str(), agg)))
         .collect()
     }
+}
+
+/// Midpoint of a class label's leading "<lo>-<hi>" range, e.g. "60-100 boven
+/// midden tot hoog" -> 80.
+fn range_midpoint(class: &str) -> Option<f64> {
+    let range = class.split_whitespace().next()?;
+    let (lo, hi) = range.split_once('-')?;
+    let (lo, hi): (f64, f64) = (lo.parse().ok()?, hi.parse().ok()?);
+    (lo <= hi).then_some((lo + hi) / 2.0)
 }
 
 /// Columns in the source that are neither configured nor known identifiers.
@@ -161,6 +175,15 @@ pub fn run(config: &CbsConfig, hexes: &[Hex], input: &Path, year: i64, out: &Pat
             (config.rename.get(&name).cloned().unwrap_or(name), vals)
         })
         .collect();
+    for name in &config.category_midpoints {
+        let Some(vals) = strings.get(name) else { continue };
+        let mids: Vec<Option<f64>> = vals.iter().map(|v| v.as_deref().and_then(range_midpoint)).collect();
+        let unparsed = vals.iter().zip(&mids).filter(|(v, m)| v.is_some() && m.is_none()).count();
+        if unparsed > 0 {
+            eprintln!("  {name}: {unparsed} classes without a leading numeric range (null)");
+        }
+        numeric.insert(name.clone(), mids);
+    }
 
     let wanted = config.numeric_columns();
     let configured: BTreeSet<&str> =

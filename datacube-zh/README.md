@@ -64,6 +64,10 @@ datacube-zh/prepare/static.py --only bag3d && ./target/release/datacube-zh stati
 datacube-zh/prepare/wb.py && ./target/release/datacube-zh cbs --layer wb
 datacube-zh/prepare/lbm.py && ./target/release/datacube-zh cbs --layer lbm
 
+# 4e. BAG verblijfsobjecten (LV BAG levenscyclus extract, VBO part only, ~1.2 GB) and NDFF soortendiversiteit
+datacube-zh/prepare/bag.py && ./target/release/datacube-zh bag     # -> work/layers/bag_<year>.parquet
+datacube-zh/prepare/static.py --only ndff_soortendiversiteit,ndff_soortendiversiteit_rl && ./target/release/datacube-zh static
+
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
 
@@ -80,10 +84,11 @@ uv run datacube-zh/assemble.py
 | 2 | CBS (~135 cols, yearly) | [CBS vierkantstatistieken 100m](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/kaart-van-100-meter-bij-100-meter-met-statistieken) | polygon overlay, `config/cbs.toml` | done |
 | 3 | LGN `_fraction` (yearly) | **stopgap**: Databricks `lgn<year>_pzh_vectorized_consumption` export (`own_data/sources/lgn/`), 2018-2022, 2023 = copy of 2022. Raw rasters wanted (lgn.nl has no direct links, 4TU copies embargoed) | imported as-is in `assemble.py`; raw route would be raster engine with class counts | stopgap |
 | 4 | gemeente/wijk/buurt codes + names | [CBS Wijk- en Buurtkaart 2024 v2](https://www.cbs.nl/nl-nl/dossier/nederland-regionaal/geografische-data/wijk-en-buurtkaart-2024) | area-weighted mode of buurtcode; wijk/gemeente derived from that buurt | done |
-| 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done, except BAG (`num_*`, deferred) and `soortenrijkdomsklasse` (source unknown) |
+| 5 | static layers (see below) | AHN, LIWO, RIVM, REV, PDOK, BRO | rasters: pixel centre -> `zone_from_point`; vectors: polygon overlay | done |
 | 5b | NBBG land use (41 categories, peiljaren 2020 + 2022) | [CBS NBBG2022 mutatiebestand](https://geodata.cbs.nl/files/Bodemgebruik/NBBG2022/) | `hex_overlaps` once, then overlap per category for both years; `config/bbg.toml` | done |
 | 5c | BRP crop groups (15 groups, yearly 2018-2023) | BRP gewaspercelen (RVO via PDOK) | overlay fractions per crop group; `config/brp_groups.toml` | done |
-| 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2022-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
+| 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2018-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
+| 5e | BAG verblijfsobjecten per gebruiksdoel (`num_*`, yearly 2018-2025) | [LV BAG levenscyclus-extract](https://service.pdok.nl/kadaster/bag/atom/bag.xml) (PDOK, full history) | state on 1 January; point -> geoplegma `zone_from_point`; `config/bag.toml` | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -97,7 +102,8 @@ uv run datacube-zh/assemble.py
   formula).
 - New vs. original: distance/count columns exist for 2022-2023 too, and
   `mediaan_inkomen_huishouden` (categorical, 2018-2019 only) is kept as an
-  area-weighted mode instead of being lost as 0.
+  area-weighted mode, and as `_area_weighted_average` = mean percentile midpoint
+  (see below), instead of being lost as 0.
 
 ## Validation (admin)
 
@@ -134,6 +140,8 @@ of it).
 | explosie- / brand- / gifwolk- / civielexplosie- / vuurwerkaandachtsgebied | REV WFS (basisnet + buisleidingen + stationaire bronnen) | 99% / 99% / 93% / 100% / 100% |
 | natura2000_id (+ natura2000_naam) | PDOK Natura 2000 WFS, official site `nr` | same areas; the original used its own numbering |
 | bodemklasse, bodemnaam | BRO Bodemkaart 1:50.000 (primary soil unit) | 93% (where mapped) |
+| ndff_soortendiversiteit_klasse | NDFF soortendiversiteit per km-hok (BIJ12, 2017), all species, class 1-8, area-weighted mean | rho 0.57 |
+| ndff_soortendiversiteit_rl_klasse (-> soortenrijkdomsklasse) | idem, Red List species | rho 0.75 |
 
 Notes:
 - gifwolk: 57% of hexes vs 63% in the original; RIVM changed the gifwolk
@@ -142,15 +150,14 @@ Notes:
   (built-up) areas, where the original seems to have filled 0.
 - The original's fractional class values (x/7) suggest it sampled the 7 H3
   res-10 child centres per hex; this pipeline uses every pixel instead.
-- Not rebuilt: `num_*` (BAG, deferred), `soortenrijkdomsklasse` (no public
-  source found), `landgebruiksklasse` (comes with LGN), `heeft_kepler_data`.
+- Not rebuilt: `landgebruiksklasse` (comes with LGN).
   The year-independent `aantal_inwoners` (~CBS 2020/2021 totals) will be
   filled from the CBS layer at assembly.
 
 ## Outputs (`assemble.py`)
 
-- `out/datacube_zh/` (+ `datacube_zh.parquet`): 226,908 rows (37,818 hexes x
-  2018-2023), 169 columns, real values. Includes columns the original lacks:
+- `out/datacube_zh/` (+ `datacube_zh.parquet`): 302,544 rows (37,818 hexes x
+  2018-2025), 384 columns, real values. Includes columns the original lacks:
   `province_fraction`, `lat`/`lon`, `hex_area_m2`, `cbs_coverage`,
   `mediaan_inkomen_huishouden_mode`, `natura2000_naam`.
 - `out/volledige_tijdreeks_delta/`: same 232 columns, order and types as the
@@ -164,8 +171,9 @@ Notes:
     mostly 0 in the original).
   - `aantal_inwoners` = real CBS population of that row's year (original:
     one static snapshot); `heeft_atlas_data` = hex has ANK heat-island data.
-  - Not yet produced, left null: BAG `num_*`, `soortenrijkdomsklasse`, `heeft_kepler_data`,
-    `mediaan_inkomen_huishouden_area_weighted_average` (was all-0 anyway).
+  - All 232 original columns are now produced; `heeft_kepler_data` = scaled
+    `aantal_inwoners_sum` > 0 (the original's exact rule); `soortenrijkdomsklasse` = NDFF Red List
+    km-hok class; `num_*` are yearly (the original was one snapshot).
   - Validation: median per-year Spearman vs the original 0.987 over 146
     shared columns. Pooled over all years it looks lower (0.60) only because
     the original has zeros for years it was missing (e.g. distances only in
@@ -278,7 +286,7 @@ Known and accepted (documented, not "fixed"):
 
 - `config/regions.toml`: `zh` (default, `own_data/work`, `out/datacube_zh`)
   and `nl` (`work_nl`, `out_nl/datacube_nl`; rasters fetched at >= 25 m).
-  The national cube is 468,688 hexes x 2018-2025 (3.75M rows, 290 columns);
+  The national cube is 468,688 hexes x 2018-2025 (3.75M rows, 305 columns; zh: 384);
   assembly streams one year at a time into a `year_int`-partitioned Delta
   table (~60 s, ~7 GB peak).
 - Years 2018-2025. CBS squares 2024 (v2) and 2025 (v1, preliminary; also
@@ -311,50 +319,114 @@ Known and accepted (documented, not "fixed"):
   min 0.76 = border hexes partly abroad). Population vs CBS official: NL 2023
   17.14M (CBS-published squares; suppression makes it a few % low).
 
-## TESSERA embeddings (`prepare/tessera_hex.py`, zh only, 2022-2025)
+## BAG verblijfsobjecten (`prepare/bag.py`, `datacube-zh bag`)
+
+- Source: PDOK LV BAG levenscyclus extract (`lvbag-extract-nl.zip`, national, full history). Only the
+  VBO member (~1.2 GB) is fetched, by HTTP range; all 26.2M voorkomens are parsed into
+  `sources/bag/vbo_voorkomens.parquet` (shared), then clipped per region.
+- Per year the state on 1 January (like CBS): voorkomens valid on yyyy-01-01 with status in gebruik /
+  in gebruik (niet ingemeten) / verbouwing. Points -> hex with geoplegma `zone_from_point`.
+- Columns: `num_verblijfsobjecten` + `num_<gebruiksdoel>` for the 11 BAG gebruiksdoelen (names as in
+  the original). A verblijfsobject with several gebruiksdoelen counts for each.
+- `eindRegistratie` is not a filter: an ordinary mutation ends both the validity and the
+  registration of the previous voorkomen. 0 inactive voorkomens, 0 overlapping validity periods.
+- Validation: the original is one recent snapshot (counts of verblijfsobjecten, not panden, despite its
+  metadata). Per-year Spearman rises to the present: woonfunctie 0.967 (2018) -> 0.982 (2025); other
+  functions 0.86-0.96 in 2025. Current in-use state vs original: 1.80M vs 1.83M woonfunctie, rho 0.983.
+  NL woonfunctie 1 Jan 2023 = 8.13M (CBS housing stock ~8.09M).
+- Caveat: history as registered today (later corrections apply backwards).
+
+## NDFF soortendiversiteit (`soortenrijkdomsklasse`)
+
+- The original's column is a km-hok product: its fractional (x/7) hexes lie on the 1 km RD grid and
+  the value is constant per km-hok (3,441 of 3,444). Source: BIJ12/NDFF "Soortendiversiteit in
+  Nederland" (all species and Red List), edition 2017-11-15, classes 1-8, WFS
+  geoservices.ndff.nl. Licence listed as "onbekend".
+- Columns: `ndff_soortendiversiteit_klasse`, `ndff_soortendiversiteit_rl_klasse` (area-weighted mean
+  class, static, null over sea). The drop-in `soortenrijkdomsklasse` uses the Red List map:
+  Spearman 0.75 (all species 0.57). The 0 = no-data pattern matches exactly; the values don't, so
+  the original likely used an earlier generation of the same map. Checked and ruled out: RIVM
+  ANK/ALO bee, earthworm and habitat rasters (rho <= 0.33), km grid shifts.
+- Sources: [all species](https://data.overheid.nl/dataset/31470-soortendiversiteit-in-nederland),
+  [Red List](https://data.overheid.nl/dataset/31469-soortendiversiteit-in-nederland-op-basis-van-rode-lijstsoorten),
+  [NDFF explanation](https://serviceteam.ndff.nl/hc/nl/articles/33167830715677-Soortendiversiteit-kaarten).
+
+## Median household income (`mediaan_inkomen_huishouden_area_weighted_average`)
+
+- CBS squares carry this only in 2018-2019, as national income-percentile classes. `cbs.toml`
+  `category_midpoints` turns each class into its range midpoint (00-20 -> 10, 40-80 -> 60), then
+  takes the area-weighted average: a percentile position from 0 to 100, not euros. Spearman vs
+  buurt standardised income 0.62-0.67, vs WOZ 0.75. 2020+ stays null (not published; the buurt
+  kerncijfers have no median household income; see `wb_*`).
+
+## TESSERA embeddings (`prepare/tessera_hex.py`, zh only, 2018-2025)
 
 Annual 10 m embeddings from the TESSERA foundation model (Cambridge; Sentinel-1 + Sentinel-2 time
 series, 128 dims), via `geotessera` NPY tiles (v1.1, `cambridge` variant: the default `dclimate` run is
-Zarr-only; never mix variants/versions). Tiles + venv live in `own_data/tessera/` (~9.7 GB per year).
+Zarr-only; never mix variants/versions). Tiles 2017-2025 (98 per year, ~9.7 GB per year, sizes checked
+against the manifest) + venv live in `own_data/tessera/`.
 
 ```bash
 python3 -m venv own_data/tessera/.venv
 own_data/tessera/.venv/bin/pip install geotessera scikit-learn lightgbm duckdb geopandas pyarrow h3 rasterio
-for y in 2022 2023 2024 2025; do
-  own_data/tessera/.venv/bin/geotessera download --bbox 3.75,51.65,5.15,52.35 --year $y -f npy -o own_data/tessera/tiles_$y
+for y in $(seq 2017 2025); do
+  own_data/tessera/.venv/bin/geotessera download --bbox 3.75,51.65,5.15,52.35 --year $y -f npy \
+    --dataset-variant cambridge -o own_data/tessera/tiles_$y
 done
-own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 2022 2023 2024 2025
+own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 2017 2018 2019 2020 2021 2022 2023 2024 2025
 uv run datacube-zh/assemble.py --region zh
 ```
 
-- Columns (27): `tessera_pc01..pc16` + `tessera_pixels` (2022-2025); from 2023 the change vs the
-  previous year: `tessera_change{,_agri,_nonagri}_{mean,share}`, `tessera_{land,agri,nonagri}_pixels`,
-  `tessera_change_from`. Before 2022 all null; the nl cube has none.
+- Columns (27): `tessera_pc01..pc16` + `tessera_pixels` (2018-2025); the change vs the previous year:
+  `tessera_change{,_agri,_nonagri}_{mean,share}`, `tessera_{land,agri,nonagri}_pixels`,
+  `tessera_change_from` (2018 is compared with 2017, which is downloaded only for that). The nl cube has none.
 - PCA (92% of the hex-mean variance) and the change thresholds (p95 of 2024->2025 pixel distances:
-  all land 0.368, non-agricultural 0.176) are fitted once and saved in `own_data/tessera/pca_threshold.npz`,
-  so new years project onto the same axes. `--refit` refits (and changes every year's values).
+  all land 0.368, non-agricultural 0.176) are fitted once and saved in `own_data/tessera/pca_threshold.npz`;
+  2017-2023 are projected onto the same axes. `--refit` refits (and changes every year's values).
 - Change = per-pixel cosine distance between consecutive years; water (NBBG 2022 classes 70-83) excluded;
-  `_agri` = pixels in a BRP parcel in either year, `_nonagri` = the rest.
+  `_agri` = pixels in a BRP parcel in either year, `_nonagri` = the rest. BRP 2017 does not exist, so
+  2017->2018 uses BRP 2018 for both years. A field that drops out of BRP (e.g. becomes a building site)
+  moves its pixels into `_nonagri`.
 - Hex assignment uses the `h3` library (same res-9 cells as geoplegma's h3o), not `raster.rs`; fine for a
   trial, the production route would be a geoplegma raster path.
 - 21 North Sea hexes off Hoek van Holland stay null (TESSERA has no tile there).
 
-What it shows (validated against BRP, NBBG, CBS):
+What it shows (validated against BRP, NBBG, CBS, PDOK aerial photos):
 - PCs are land use without labels: PC1 grassland vs water/dunes, PC2 built-up vs sea, PC3 arable
-  (r 0.83), PC4 industry/greenhouses vs forest. PC1-3 are stable across years (province year offset
-  <= 0.07 SD, per hex r 0.86-0.99); PC5/6/8 carry year effects (0.2-0.6 SD), so compare years via the
-  change columns or after subtracting each year's province mean. Use ~PC1-8 for similarity/SOM.
-- All-land change is dominated by agriculture (crop rotation, grass -> maize/potatoes; Spearman +0.69
-  with arable share, +0.66 with BRP crop-group shifts). That is why change is split agri / non-agri.
-- Non-agricultural change finds construction: its top hexes are almost all NBBG `Bouwterrein`
-  (Maasvlakte 2, Vlaardingen, Maassluis, Ridderkerk, Waddinxveen, Hoeksche Waard), plus recurring
-  Noordwijk dune hexes and one Goeree wetland hex (not yet explained; check the aerial photo).
+  (r 0.83), PC4 industry/greenhouses vs forest. PC1-2 are stable in every year 2017-2025 (per hex r 0.97-0.99
+  vs 2024), PC1-4 province year offsets <= 0.15 SD; PC5-8 carry year effects (up to 0.75 SD), so compare
+  years via the change columns or after subtracting each year's province mean. Use ~PC1-8 for similarity/SOM.
+- All-land change is dominated by agriculture (crop rotation; Spearman +0.69 with arable share, +0.66
+  with BRP crop-group shifts), hence the agri / non-agri split.
+- Non-agricultural change finds construction and earthworks: top hexes are mostly NBBG `Bouwterrein`
+  (Maasvlakte 2, Vlaardingen, Maassluis, Ridderkerk, Waddinxveen, Hoeksche Waard), Lansingerland's new
+  district (51.98, 4.48; sand put down 2023, houses 2025) and recurring earthworks north of Rotterdam
+  Noord-West (51.949, 4.40; bare 2017-19, grass 2020-23, bare again 2024-25).
+- It also flags transient nature dynamics that are not land-use change: Noordwijk dune slacks (52.30, 4.51)
+  were flooded in 2024 only (2024 is 0.20-0.30 from every other year, 2025 is back to 2022), and a Haringvliet
+  wetland island at Stellendam (51.823, 4.028) flooded 2023-24 and regrew in 2025. Of the top-200 non-agri
+  hexes of 2023->2024, ~19% are such transients (all dune hexes), the Bouwterrein ones are all persistent.
+  Test: a transient year is far from both neighbours while those neighbours stay close.
 - It is *not* a housing index: over 2022->2024 hexes with 50+ new homes change ~6x more than stable
-  ones but the correlation is weak; over one year (2024->2025) there is no housing signal.
-- Hotspots persist: adjacent pairs Spearman 0.63-0.68, 25 hexes in the top 200 of all three pairs.
-  Province share above the threshold is stable (~5% all land, 11-12% agri); non-agri rises
-  3.3% -> 4.1% -> 5.0% (real or input drift - unresolved).
+  ones but the correlation is weak; over one year there is no housing signal.
+- Year noise: each year's embedding has its own noise level (median pair distance ~ u_a + u_b +
+  0.007 per extra gap year; u non-agri 2017 .039, 2018 .028, 2019 .027, 2020 .026, 2021 .043, 2022 .025,
+  2023 .023, 2024 .032, 2025 .022), visible in stable built-up land and forest too, spatially uniform
+  (not tile seams). So the raw province non-agri share swings per pair (17-18 7.0%, 18-19 4.1%,
+  19-20 3.0%, 20-21 4.5%, 21-22 6.8%, 22-23 3.3%, 23-24 4.1%, 24-25 5.0%) without a trend; the earlier
+  "rise" 3.3 -> 5.0% is this input drift. Pairs with 2017, 2021 or 2024 read high. Agri/all-land shares
+  carry the same noise (~11-12% agri 2022-25, 6.8-11.6% before).
+- `--drift-correct` (not used for the cube by default) writes `tessera_change_nonagri_share_dc`: the non-agri
+  threshold per pair is scaled by p90(non-agri distances of the pair) / p90(of 2024->2025) (0.1386, in
+  `own_data/tessera/drift_ref.npz`); this is close to quantile-matching a stable reference class. Province
+  share then 4.7-5.9% for every pair (stable built-up spread 1.8x instead of 6x). Output for testing:
+  `own_data/work/tessera_dc/`. Use it (or the raw share within one pair) when comparing years.
+- Analysis scripts, aerial montages and a stride-3 pixel sample of all 36 year pairs:
+  `own_data/work/tessera_analysis/`.
 
-Not run: `prepare/tessera_grass.py`, a pilot that splits grassland into agricultural vs natural
-(BRP 265/266 vs 331/332/1926 labels, LightGBM, spatial CV). Smoke test on 4 coastal tiles gave parcel
-AUC 0.95. 2022 tiles for it are downloaded.
+Grassland pilot (`prepare/tessera_grass.py all --out own_data/work/tessera_grass`, 2022, not wired in):
+splits grassland into agricultural vs natural (BRP 265/266 vs 331/332/1926 labels, LightGBM). Spatial CV
+(5-fold by tile, 84 tiles): pixel AUC 0.926, parcel AUC 0.946, but F1(natural) 0.66: at p >= 0.5 it calls
+519 km2 natural vs 131 km2 BRP-natural (12% of BRP 265 parcels; spot checks show wet/extensive meadows, so
+it reads management intensity, not registration). Needs calibration (threshold ~0.8 matches the BRP prior,
+precision 0.70 / recall 0.72) before a per-hex "extensive grassland" column is worth adding.

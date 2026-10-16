@@ -177,10 +177,13 @@ correct sums (`overlap / square_area`, see `datacube-zh/src/overlay.rs`) instead
   (plus `.parquet` and `.columns.json` exports).
 - Layers: grid, CBS 100m squares, admin (gemeente/wijk/buurt), static rasters/vectors (AHN, LIWO, RIVM,
   REV, Natura 2000, BRO), LGN stopgap (ZH only, 2018-2023), CBS NBBG land use, BRP crop groups, 3D BAG,
-  buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`), and (zh only, 2022-2025) TESSERA embeddings
-  (`tessera_*`: 16-dim PCA per hex + year-on-year change, split agri/non-agri). The zh cube has 369 columns.
-- Still null / not produced: BAG `num_*`, `soortenrijkdomsklasse` (source unknown), `heeft_kepler_data`,
-  median household income. Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
+  buurt kerncijfers (`wb_*`), Leefbaarometer 3.0 (`lbm_*`), BAG verblijfsobjecten per gebruiksdoel (`num_*`,
+  yearly, `datacube-zh bag`), NDFF soortendiversiteit (`ndff_*` -> `soortenrijkdomsklasse`), and (zh only,
+  2018-2025) TESSERA embeddings (`tessera_*`: 16-dim PCA per hex + year-on-year change, split agri/non-agri).
+  zh cube 384 columns, nl 305. The 0-255 drop-in export now produces all 232 original columns.
+- Remaining gaps: median household income only 2018-2019 (CBS stopped publishing it);
+  `soortenrijkdomsklasse` matches the original only at Spearman 0.75 (older map edition not found).
+  Full list of known gaps and accepted differences is in `datacube-zh/README.md`.
 
 **Separation of concerns (user's explicit wish):** GeoPlegma only *prepares* the datacube. All game /
 scenario logic lives elsewhere and reads the cube as read-only input:
@@ -191,7 +194,22 @@ scenario logic lives elsewhere and reads the cube as read-only input:
   `_custom_data/PLAN.md`). Game constraints and recovered formulas: `_custom_data/docs/`.
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
-### Session 2026-10-15/16 recap (pick up here)
+### Session 2026-10-16 (later) recap (pick up here)
+
+- Uncommitted work on this branch: BAG `num_*` layer (`src/bag.rs`, `prepare/bag.py`, `config/bag.toml`),
+  NDFF static layers, income midpoints (`cbs.rs` `category_midpoints`), heeft_kepler_data rule in
+  `assemble.py`, TESSERA 2017-2021 + `--drift-correct` flag; README updated. Both cubes reassembled.
+- TESSERA findings: the non-agri "rise" 3.3 -> 5.0% is per-year input noise (no trend over 2017-2025);
+  Noordwijk dunes and the Goeree wetland are transient flooding (2024 / 2023-24), Rotterdam and Lansingerland
+  are real earthworks/construction. Grassland pilot: AUC 0.93-0.95 but over-predicts natural ~4x; not wired in.
+- `~/datacube`: CBS `_sum` weight fix on branch `bug/cbs-sum-source-fraction` (uncommitted, tests pass).
+  Found a bigger CBS bug: `h3_polyfillash3` only assigns a hex when its centre is in the 100m square, so 88%
+  of squares get no hex and sums are ~8-10x low even after the weight fix (likely the real cause of the
+  ~1/10 factor in `own_data`). Not fixed yet (user decision). LGN broadcast hint: local Sedona stand-in shows
+  no nested-loop fallback (auto-broadcast; forced fallback = RangeJoin, ~2.7x slower) -> code left unchanged;
+  real proof needs `.explain()` in a Databricks run (local `az` account lacks feed access).
+
+### Session 2026-10-15/16 recap
 
 - Pushed branch `feature/own-data-cbs-overlay` to the user's fork `oosterhuisthijs-source/GeoPlegma`
   (remote `fork`, branch tracks it). `gh` is logged into two accounts: `oosterhuisthijs-source` (personal,

@@ -232,3 +232,31 @@ outputs = [
   { column = "height_m", agg = "max", name = "bag3d_hoogte_max_m" },
   { column = "bouwjaar", agg = "area_weighted_average", name = "bag3d_bouwjaar_gem" },
 ]
+
+# --- Species diversity: NDFF soortendiversiteit per kilometerhok (BIJ12) ---
+#   Two km-hok maps (edition 2017-11-15, NDFF observations of the previous
+#   10 years, 8 best-surveyed species groups, corrected for observer effort),
+#   classes 1-8 (all species: 1 = 1-100 ... 8 = > 700 species; Red List:
+#   1 = 0-10 ... 7 = 61-80, 8 = >= 81 species). Hex value = area-weighted
+#   mean class of the km-hokken it overlaps (fractional at km-hok edges,
+#   like the original's mean over 7 sample points); null where no km-hok
+#   (open sea). The original `soortenrijkdomsklasse` follows the Red List
+#   map most closely (README).
+
+[[vector]]
+name = "ndff_soortendiversiteit"
+description = "NDFF soortendiversiteit per kilometerhok (BIJ12, 2017), klasse 1-8, alle soorten van 8 soortgroepen"
+wfs = "https://geoservices.ndff.nl/ndff_soortendiversiteit/"
+layers = ["ms:soortendiversiteit"]
+sql = """SELECT geom, CAST(overall_class AS REAL) AS klasse FROM "ms:soortendiversiteit" """
+agg = "numeric"
+outputs = [{ column = "klasse", agg = "area_weighted_average", name = "ndff_soortendiversiteit_klasse" }]
+
+[[vector]]
+name = "ndff_soortendiversiteit_rl"
+description = "NDFF soortendiversiteit Rode-Lijstsoorten per kilometerhok (BIJ12, 2017), klasse 1-8"
+wfs = "https://geoservices.ndff.nl/ndff_soortendiversiteit_rl/"
+layers = ["ms:soortendiversiteit_rl"]
+sql = """SELECT geom, CAST(overall_class AS REAL) AS klasse FROM "ms:soortendiversiteit_rl" """
+agg = "numeric"
+outputs = [{ column = "klasse", agg = "area_weighted_average", name = "ndff_soortendiversiteit_rl_klasse" }]

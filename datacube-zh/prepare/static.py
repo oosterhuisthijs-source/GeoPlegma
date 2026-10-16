@@ -150,9 +150,17 @@ def prepare_vector(layer, src_dir, out_dir):
                 continue
             # Paged requests: large national layers otherwise come back as one
             # huge, sometimes truncated, GML response.
+            # With `sql`: fetch the clip as-is, then derive columns on it
+            # (SQLite dialect, e.g. to cast WFS string attributes to numbers).
+            dest = out_dir / f"{name}__clip.parquet" if "sql" in layer else out
             run(["ogr2ogr", "--config", "OGR_WFS_PAGING_ALLOWED", "ON", "--config", "OGR_WFS_PAGE_SIZE", "5000",
-                 "-f", "Parquet", str(out), f"WFS:{layer['wfs']}", wfs_layer,
-                 "-spat", *map(str, BBOX_RD), "-spat_srs", "EPSG:28992"] + common)
+                 "-f", "Parquet", str(dest), f"WFS:{layer['wfs']}", wfs_layer,
+                 "-spat", *map(str, BBOX_RD), "-spat_srs", "EPSG:28992"] + common
+                + (["-lco", "GEOMETRY_NAME=geom"] if "sql" in layer else []))
+            if "sql" in layer:
+                sql = layer["sql"].replace(f'"{wfs_layer}"', f'"{dest.stem}"')
+                run(["ogr2ogr", "-f", "Parquet", str(out), str(dest), "-dialect", "SQLite", "-sql", sql] + common)
+                dest.unlink()
             log(f"{name}: {wfs_layer} -> {out}")
     else:
         gpkg = src_dir / Path(urllib.parse.urlparse(layer["gpkg"]).path).name

@@ -25,6 +25,13 @@ complements = [["percentage_koopwoningen", "percentage_huurwoningen"]]
 # String values treated as null before taking the mode.
 null_strings = ["onclassificeerbaar"]
 
+# Categorical columns also made numeric as the midpoint of their leading range:
+# the CBS income class "40-80 midden tot boven midden" (the square's median
+# household falls in the 40th-80th percentile of the national household
+# income distribution) -> 60. Aggregated like any other numeric column (see
+# area_weighted_average); the class itself is kept as `_mode`.
+category_midpoints = ["mediaan_inkomen_huishouden"]
+
 # Source column name (any year) -> canonical name.
 [rename]
 # 2018: "gemiddelde afstand" naming
@@ -122,6 +129,9 @@ area_weighted_average = [
   "gemiddelde_woz_waarde_woning",
   "gemiddeld_gasverbruik_woning",
   "gemiddeld_elektriciteitsverbruik_woning",
+  # Numeric version of the categorical income class (category_midpoints):
+  # national income-percentile position of the square's median household.
+  "mediaan_inkomen_huishouden",
 ]
 min = [
   "dichtstbijzijnde_grote_supermarkt_afstand_in_km",

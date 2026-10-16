@@ -128,6 +128,18 @@ def load_wb(work: Path, year: int) -> pa.Table | None:
     return pq.read_table(f) if f.exists() else None
 
 
+def load_bag(work: Path, year: int) -> pa.Table | None:
+    """BAG verblijfsobjecten per gebruiksdoel on 1 January (datacube-zh bag)."""
+    f = work / f"layers/bag_{year}.parquet"
+    return pq.read_table(f) if f.exists() else None
+
+
+BAG_SOURCE = ("BAG verblijfsobjecten (LV BAG levenscyclus-extract via PDOK, volledige historie); "
+              "stand op 1 januari van het jaar; config/bag.toml")
+BAG_AGG = ("aantal verblijfsobjecten met gebruiksdoel {func} waarvan het punt in de cel ligt (status in gebruik / "
+           "in gebruik niet ingemeten / verbouwing); een object met meerdere gebruiksdoelen telt bij elk mee")
+
+
 def load_lbm(work: Path, year: int) -> pa.Table | None:
     """Leefbaarometer: biennial measurements; odd years take the previous one."""
     src = year if year % 2 == 0 else year - 1
@@ -168,10 +180,11 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 def build_year(work: Path, year: int, base: pa.Table, lgn: pa.Table | None) -> pa.Table:
-    """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG + wb + lbm + TESSERA (+ LGN)."""
+    """One year of the cube: CBS (+ grid/admin/static base) + BRP + NBBG + BAG + wb + lbm + TESSERA (+ LGN)."""
     cube = left_join(pq.read_table(work / f"layers/cbs_{year}.parquet"), base, "h3_id")
     tess = load_tessera(work, year, tessera_schema(work), base["h3_id"])
-    for layer in (load_brp(work, year), load_bbg(work, year), load_wb(work, year), load_lbm(work, year), tess):
+    for layer in (load_brp(work, year), load_bbg(work, year), load_bag(work, year), load_wb(work, year),
+                  load_lbm(work, year), tess):
         if layer is not None:
             cube = left_join(cube, layer, ["h3_id", "year_int"])
     if lgn is not None:
@@ -206,6 +219,13 @@ def build_compat(real: pa.Table, original_schema: pa.Schema) -> pa.Table:
         # Stood for "has Atlas Natuurlijk Kapitaal data"; approximated by
         # whether the ANK heat-island layer has a value for the hex.
         "heeft_atlas_data": pc.is_valid(real["hitte"]),
+        # In the original this is exactly "the 0-255 scaled aantal_inwoners_sum
+        # is > 0" in every year (i.e. the hex was in the populated set that
+        # was exported to Kepler); reproduced with the same rule.
+        "heeft_kepler_data": pc.fill_null(pc.greater(scale_0_255(pc.cast(real["aantal_inwoners_sum"], pa.float64())), 0), False),
+        # NDFF soortendiversiteit per km-hok, Red List map: the closest match
+        # to the original's column (Spearman 0.75 vs 0.57 for all species).
+        "soortenrijkdomsklasse": real["ndff_soortendiversiteit_rl_klasse"],
     }
     cols, missing = [], []
     for field in original_schema:
@@ -255,6 +275,11 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         "naam": ("provincienaam (PDOK bestuurlijke gebieden)", None, None),
         "cbs_coverage": (cbs_src, "0-1", "aandeel van de cel bedekt door CBS-vierkanten"),
         "mediaan_inkomen_huishouden_mode": (cbs_src, "klasse", "oppervlaktegewogen meest voorkomende inkomensklasse"),
+        "mediaan_inkomen_huishouden_area_weighted_average": (
+            cbs_src, "percentiel 0-100",
+            "inkomensklasse van het vierkant (percentielgroep van de landelijke huishoudinkomensverdeling, "
+            "bijv. '40-80 midden tot boven midden') als middelpunt (60), oppervlaktegewogen gemiddeld; "
+            "alleen 2018-2019 (CBS publiceert de klasse daarna niet meer per vierkant)"),
         "lgn_coverage": ("LGN (stopgap: Databricks export)", "0-1", "som van alle _fraction kolommen; < 1 = data ontbreekt in de export"),
         "landgebruiksklasse": ("LGN (stopgap: Databricks export)", "klasse", "dominante LGN-klasse"),
         "lgn_source_year": ("LGN (stopgap: Databricks export)", "jaar", "LGN-jaar waar de waarden vandaan komen (2023 = kopie van 2022)"),
@@ -263,7 +288,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         info[col] = ("CBS Wijk- en Buurtkaart 2024 v2", None, "buurt met de grootste overlap; wijk/gemeente afgeleid van die buurt")
     for agg, cols in cbs["aggregation"].items():
         for c in cols:
-            info[f"{c}_{agg}"] = (cbs_src, None, cbs_aggs.get(agg, agg))
+            info.setdefault(f"{c}_{agg}", (cbs_src, None, cbs_aggs.get(agg, agg)))
     for layer in static.get("raster", []):
         src = layer.get("description", "")
         info[layer["name"]] = (f"{src} [{layer['wcs']} {layer['coverage']}]", None,
@@ -325,6 +350,16 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                             else "niet-landbouw (bebouwing, natuur, infrastructuur)" if "_nonagri_" in name else "alle land")
                     agg = (f"gemiddelde cosinusafstand per pixel t.o.v. het vorige jaar, {part}" if name.endswith("_mean")
                            else f"aandeel pixels boven een vaste drempel (p95 van 2024->2025), {part}")
+        elif name.startswith("ndff_"):
+            src = ("NDFF soortendiversiteit per kilometerhok (BIJ12, editie 2017-11-15; NDFF-waarnemingen "
+                   "van de 10 jaar ervoor, 8 soortgroepen, gecorrigeerd voor waarneemintensiteit), "
+                   + ("Rode-Lijstsoorten" if "_rl_" in name else "alle soorten"))
+            unit = "klasse 1-8"
+            agg = "oppervlaktegewogen gemiddelde klasse van de km-hokken die de cel overlappen (statisch)"
+        elif name.startswith("num_"):
+            src, unit = BAG_SOURCE, "aantal"
+            agg = (BAG_AGG.format(func=name.removeprefix("num_").replace("_", " ")) if name != "num_verblijfsobjecten"
+                   else "aantal verblijfsobjecten (alle gebruiksdoelen) waarvan het punt in de cel ligt")
         elif name.startswith("brp_"):
             src = "BRP gewaspercelen (RVO via PDOK), definitief, per jaar; gewascode -> gewasgroep in config/brp_groups.toml"
             unit = "0-1" if name.endswith(("_fraction", "_coverage")) else None

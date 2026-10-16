@@ -148,7 +148,7 @@ def stage_sample(args, brp, nbbg):
             grp.append(np.full(m.sum(), k, np.int16))
             par.append(t["parcel"][m])
         print(f"sample {tile[0]}: {sum(map(len, y))} total", flush=True)
-    np.savez(f"{args.work}/samples.npz", X=np.concatenate(X), y=np.concatenate(y),
+    np.savez(f"{args.out}/samples.npz", X=np.concatenate(X), y=np.concatenate(y),
              group=np.concatenate(grp), parcel=np.concatenate(par))
 
 
@@ -157,7 +157,7 @@ def stage_train(args, brp):
     from sklearn.metrics import balanced_accuracy_score, confusion_matrix, f1_score, roc_auc_score
     from sklearn.model_selection import GroupKFold
 
-    d = np.load(f"{args.work}/samples.npz")
+    d = np.load(f"{args.out}/samples.npz")
     X, y, g, parcel = d["X"], d["y"], d["group"], d["parcel"]
     params = dict(objective="binary", learning_rate=0.05, num_leaves=63, min_child_samples=50,
                   feature_fraction=0.5, bagging_fraction=0.8, bagging_freq=1, verbose=-1, seed=SEED)
@@ -191,10 +191,10 @@ def stage_train(args, brp):
         "per_gewascode": per_code,
         "note": "out-of-fold, 5-fold GroupKFold by 0.1° tile (spatial CV); class-balanced weights",
     }
-    json.dump(report, open(f"{args.work}/cv_report.json", "w"), indent=1)
+    json.dump(report, open(f"{args.out}/cv_report.json", "w"), indent=1)
     print(json.dumps(report, indent=1))
     w = np.where(y == 1, (y == 0).sum() / max(y.sum(), 1), 1.0)
-    lgb.train(params, lgb.Dataset(X, y, weight=w), num_boost_round=400).save_model(f"{args.work}/model.txt")
+    lgb.train(params, lgb.Dataset(X, y, weight=w), num_boost_round=400).save_model(f"{args.out}/model.txt")
 
 
 def stage_predict(args, brp, nbbg):
@@ -202,8 +202,8 @@ def stage_predict(args, brp, nbbg):
     import lightgbm as lgb
     import pandas as pd
 
-    model = lgb.Booster(model_file=f"{args.work}/model.txt")
-    os.makedirs(f"{args.work}/prob", exist_ok=True)
+    model = lgb.Booster(model_file=f"{args.out}/model.txt")
+    os.makedirs(f"{args.out}/prob", exist_ok=True)
     hex_rows, parcel_sum, parcel_n = [], np.zeros(len(brp)), np.zeros(len(brp))
     for tile in tiles(args.work):
         t = tile_rasters(tile, brp, nbbg)
@@ -221,7 +221,7 @@ def stage_predict(args, brp, nbbg):
                 "h3_id": cells, "p_natural": p,
                 "brp_agri": lab == 0, "brp_natural": lab == 1, "nbbg": t["nbbg"][dom],
             }))
-        with rasterio.open(f"{args.work}/prob/{tile[0]}.tif", "w", driver="GTiff", height=t["shape"][0],
+        with rasterio.open(f"{args.out}/prob/{tile[0]}.tif", "w", driver="GTiff", height=t["shape"][0],
                            width=t["shape"][1], count=1, dtype="uint8", crs=CRS_TILES, transform=t["transform"],
                            nodata=255, compress="deflate") as dst:
             dst.write(prob, 1)
@@ -241,13 +241,13 @@ def stage_predict(args, brp, nbbg):
         "nbbg61_62_m2": g.nbbg.apply(lambda s: s.isin((61, 62)).sum()) * area,
     }).reset_index()
     hexes["tessera_agri_m2"] = hexes.grass_domain_m2 - hexes.tessera_natural_m2
-    hexes.to_parquet(f"{args.work}/hex_grass_{YEAR}.parquet", index=False)
+    hexes.to_parquet(f"{args.out}/hex_grass_{YEAR}.parquet", index=False)
 
     parcels = brp[["parcel", "gewascode", "label"]].copy()
     parcels["p_natural"] = np.where(parcel_n > 0, parcel_sum / np.maximum(parcel_n, 1), np.nan)
     parcels["pixels"] = parcel_n.astype(int)
     parcels["geometry"] = brp.geometry.to_crs("EPSG:4326").to_wkb()
-    parcels.to_parquet(f"{args.work}/parcels_{YEAR}.parquet", index=False)
+    parcels.to_parquet(f"{args.out}/parcels_{YEAR}.parquet", index=False)
 
     s = hexes.sum(numeric_only=True) / 1e6
     print(f"km2: domain {s.grass_domain_m2:.1f} | tessera natural {s.tessera_natural_m2:.1f} agri {s.tessera_agri_m2:.1f}"
@@ -258,8 +258,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("stage", choices=["sample", "train", "predict", "all"])
     ap.add_argument("--data", default="own_data")
-    ap.add_argument("--work", default="own_data/tessera")
+    ap.add_argument("--work", default="own_data/tessera", help="directory with tiles_<YEAR>/")
+    ap.add_argument("--out", default=None, help="where samples/model/report/predictions go (default: --work)")
     args = ap.parse_args()
+    args.out = args.out or args.work
+    os.makedirs(args.out, exist_ok=True)
     t0 = time.time()
     brp, nbbg = load_vectors(args.data)
     print(f"vectors: {len(brp)} BRP grass parcels, {len(nbbg)} NBBG polygons ({time.time() - t0:.0f}s)", flush=True)

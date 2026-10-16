@@ -25,13 +25,25 @@ LAND pixels only:
                              by crop rotation; non-agricultural change (built-up, nature, infrastructure) has
                              its own fixed threshold (p95 of non-agricultural pixel distances, first pair).
     tessera_change_from      the base year of the comparison (a 2-year gap gives larger distances)
+--drift-correct (optional, adds columns; default outputs unchanged):
+    tessera_change_nonagri_share_dc   the non-agri share with each pair's threshold multiplied by
+                             p90(non-agri distance of this pair) / p90(non-agri distance of the fit pair).
+                             Reason: every year's embedding carries its own noise level (median pixel distance of
+                             a pair ~ u_a + u_b; 2017, 2021 and 2024 are clearly noisier than 2019/2020/2022/2023, stable
+                             built-up and forest included), which inflates raw shares for pairs that contain a noisy
+                             year (raw non-agri share 3.0-7.0% per pair, corrected 4.7-5.9%).
+                             p90 (not the median) because the tail grows less than the bulk; on a sample it gives
+                             almost the same thresholds as quantile-matching a stable reference class (unchanged
+                             NBBG 2020-2022, never BRP, no 3D BAG building >= 2018). The fit-pair p90 is saved in
+                             own_data/tessera/drift_ref.npz.
+BRP for 2017 does not exist; the 2017->2018 split uses BRP 2018 for both years (nearest available year).
 Water = NBBG 2022 classes 70-83 (a static mask: sea/water pixels have embeddings too, and their
 year-to-year noise would otherwise read as change).
 
 Cosine distance is invariant to the per-pixel quantization scale, so change uses the raw int8 vectors.
 
 Embeddings: geotessera v1.1 NPY tiles (`cambridge` variant), one directory per year:
-    geotessera download --bbox 3.83,51.65,5.15,52.35 --year <Y> -f npy -o own_data/tessera/tiles_<Y>
+    geotessera download --bbox 3.75,51.65,5.15,52.35 --year <Y> -f npy --dataset-variant cambridge -o own_data/tessera/tiles_<Y>
 Tiles overlap ~80 m; only pixels whose centre lies in the tile's own 0.1° cell are used.
 Hex assignment uses the `h3` library (res 9; same cells as geoplegma's h3o backend), cached per tile.
 
@@ -39,7 +51,7 @@ Writes own_data/work/layers/tessera_<year>.parquet (h3_id + the columns above) a
 own_data/tessera/pca_threshold.npz. Not yet wired into assemble.py.
 
 Usage (pilot venv: rasterio, h3, scikit-learn):
-    own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 2024 2025
+    own_data/tessera/.venv/bin/python datacube-zh/prepare/tessera_hex.py --years 2017 2018 2019 2020 2021 2022 2023 2024 2025
 """
 import argparse
 import glob
@@ -63,6 +75,7 @@ WATER = tuple(range(70, 84))
 N_PC = 16
 DIM = 128
 CHANGE_PCTL = 95
+DRIFT_PCTL = 90  # --drift-correct: scale thresholds by this percentile of non-agri distances (pair / fit pair)
 
 
 def tile_names(tess, year):
@@ -136,7 +149,15 @@ def hex_means(tess, year, names, n_hex):
 
 
 def load_brp(data, year):
-    """All BRP parcels of a year (any crop), in the tiles' CRS, with a spatial index."""
+    """All BRP parcels of a year (any crop), in the tiles' CRS, with a spatial index.
+
+    Years without a BRP file (2017: the cube's BRP layer starts in 2018) fall back to the nearest year that
+    has one, so the 2017->2018 agri/non-agri split uses BRP 2018 for both years."""
+    have = sorted(int(re.search(r"brp_(\d{4})", f).group(1)) for f in glob.glob(f"{data}/work/brp/brp_*.parquet"))
+    if year not in have:
+        near = min(have, key=lambda y: (abs(y - year), y))
+        print(f"BRP {year} not available, using BRP {near}", flush=True)
+        year = near
     con = duckdb.connect()
     con.sql("INSTALL spatial; LOAD spatial")
     wkb = [bytes(b) for b in con.sql(f"SELECT ST_AsWKB(geom) w FROM '{data}/work/brp/brp_{year}.parquet'").fetchnumpy()["w"]]
@@ -172,7 +193,13 @@ def main():
     ap.add_argument("--data", default="own_data")
     ap.add_argument("--tess", default="own_data/tessera")
     ap.add_argument("--refit", action="store_true", help="refit PCA + threshold even if pca_threshold.npz exists")
+    ap.add_argument("--drift-correct", action="store_true",
+                    help="also write tessera_change_nonagri_share_dc: the non-agri share with a per-pair threshold scaled by "
+                         "this pair's p90 non-agricultural pixel distance relative to the threshold-fit pair "
+                         "(removes the year-specific input noise level; default columns are unchanged)")
+    ap.add_argument("--layers-dir", default=None, help="output directory (default <data>/work/layers)")
     args = ap.parse_args()
+    layers = args.layers_dir or f"{args.data}/work/layers"
     t0 = time.time()
     years = sorted(args.years)
     import h3
@@ -221,6 +248,12 @@ def main():
               f"cumulative {pca.explained_variance_ratio_.sum():.3f}")
         thr = None
 
+    # p90 non-agri pixel distance of the threshold-fit pair, needed for --drift-correct (sidecar so later runs
+    # without that pair can still use it)
+    ref_path = f"{args.tess}/drift_ref.npz"
+    fit_pair = tuple(int(v) for v in (np.load(state)["fit_years"][:2] if have else years[:2]))
+    med_fit = float(np.load(ref_path)[f"p{DRIFT_PCTL}_nonagri"]) if os.path.exists(ref_path) and not args.refit else None
+    pair_meds = {}
     changes = {}
     for y0, y1 in zip(years, years[1:]):
         hp, d, agri = pixel_change(args.tess, y0, y1, names, [load_brp(args.data, y0), load_brp(args.data, y1)])
@@ -237,6 +270,12 @@ def main():
 
         changes[y1] = {"": per_hex(np.ones(len(d), bool), thr), "_agri": per_hex(agri, thr),
                        "_nonagri": per_hex(~agri, thr_na)}
+        pair_meds[y1] = float(np.percentile(d[~agri], DRIFT_PCTL))
+        if (y0, y1) == fit_pair and med_fit is None:
+            med_fit = pair_meds[y1]
+            np.savez(ref_path, **{f"p{DRIFT_PCTL}_nonagri": med_fit}, fit_pair=np.array(fit_pair))
+        if args.drift_correct:
+            changes[y1]["dc"] = (d, agri, hp)
         print(f"{y0}->{y1}: median pixel distance {np.median(d):.4f} (agri {np.median(d[agri]):.4f}, "
               f"non-agri {np.median(d[~agri]):.4f}), {len(d)} land px, {agri.mean():.0%} in BRP ({time.time() - t0:.0f}s)")
     if not have:
@@ -244,7 +283,21 @@ def main():
                  threshold_nonagri=thr_na if thr is not None else np.nan,
                  fit_years=np.array(years), change_percentile=CHANGE_PCTL)
 
-    os.makedirs(f"{args.data}/work/layers", exist_ok=True)
+    if args.drift_correct:
+        assert med_fit is not None, f"--drift-correct needs {ref_path} or the fit pair {fit_pair} in --years"
+        for y1 in changes:
+            d, agri, hp = changes[y1].pop("dc")
+            f = pair_meds[y1] / med_fit
+            print(f"drift correction {y1}: p{DRIFT_PCTL} non-agri distance {pair_meds[y1]:.4f} vs fit pair {med_fit:.4f} -> thresholds x{f:.3f}")
+            # non-agri only: agricultural distances are dominated by real crop rotation, so a scale taken from the
+            # non-agri bulk does not transfer to them
+            for suffix, sel, t in (("_nonagri", ~agri, thr_na),):
+                n = np.bincount(hp[sel], minlength=n_hex)
+                share = np.bincount(hp[sel], (d[sel] > t * f).astype(float), n_hex) / np.maximum(n, 1)
+                changes[y1].setdefault("_dc", {})[suffix] = np.where(n > 0, share, np.nan).astype(np.float32)
+            del d, agri, hp
+
+    os.makedirs(layers, exist_ok=True)
     for y in years:
         m, cnt = means[y]
         pcs = (m - pca_mean) @ comps.T
@@ -253,12 +306,15 @@ def main():
             df[f"tessera_pc{k + 1:02d}"] = np.where(cnt > 0, pcs[:, k], np.nan).astype(np.float32)
         df["tessera_pixels"] = cnt.astype(np.int32)
         if y in changes:
+            dc = changes[y].pop("_dc", {})
             for suffix, (cm, cs, n) in changes[y].items():
                 df[f"tessera_change{suffix}_mean"] = np.where(n > 0, cm, np.nan).astype(np.float32)
                 df[f"tessera_change{suffix}_share"] = np.where(n > 0, cs, np.nan).astype(np.float32)
                 df[f"tessera{suffix or '_land'}_pixels"] = n.astype(np.int32)
+            for suffix, share in dc.items():
+                df[f"tessera_change{suffix}_share_dc"] = share
             df["tessera_change_from"] = np.int16(years[years.index(y) - 1])
-        out = f"{args.data}/work/layers/tessera_{y}.parquet"
+        out = f"{layers}/tessera_{y}.parquet"
         df.to_parquet(out, index=False)
         print(f"wrote {out}: {len(df)} rows x {df.shape[1]} cols")
     print(f"done in {time.time() - t0:.0f}s")
