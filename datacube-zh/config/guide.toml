@@ -313,3 +313,11 @@ columns = ["tropomi_*"]
 years = [2019]
 kind = "coverage"
 note = "The TROPOMI record starts in May 2018: 2018 has 8 months (its mean is left empty)."
+
+[[concept]]
+name = "Nitrogen vs nature: critical deposition values (KDW)"
+use = ["kdw_overschreden_aandeel", "kdw_overschrijding_mol_ha", "kdw_min_mol_ha", "kdw_habitat_m2"]
+alternatives = ["kdw_gewogen_mol_ha", "kdw_overschreden_m2", "kdw_habitat_type"]
+covers = ["kdw_*"]
+trend = "care"
+note = "RIVM's map of nitrogen-sensitive Natura 2000 habitats (1 ha AERIUS hexagons, 2026 monitor) with the critical deposition value (KDW) per habitat type; the habitat map is one state, repeated in every year. Exceedance per year compares the RIVM historical deposition series (1 km) with the KDW at each hexagon, so year-to-year changes are deposition changes (incl. weather), not habitat change. Nationally 2024: 71.1% of the relevant area above its KDW here vs 69.3% in RIVM's own 1 ha calculation; local values differ more. Empty = no relevant habitat in the cell."

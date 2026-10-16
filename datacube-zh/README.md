@@ -83,6 +83,7 @@ datacube-zh/prepare/laadpalen.py --region zh       # NDW charging points -> work
 # 4i. measurements and model maps per year, see "Climate, deposition, air quality" below
 uv run datacube-zh/prepare/rivm.py --region zh --download   # RIVM deposition + GCN air quality -> work/layers/rivm.parquet
 uv run datacube-zh/prepare/tropomi.py --region zh           # TROPOMI NO2 (TEMIS monthly) -> work/layers/tropomi.parquet
+uv run datacube-zh/prepare/kdw.py --region zh               # KDW per habitat + exceedance -> work/layers/kdw.parquet (after rivm.py)
 uv run datacube-zh/prepare/knmi.py download                 # KNMI daily grids, once for all regions (~15 h, rate-limited)
 uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knmi.parquet
 
@@ -120,6 +121,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 | 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre | download pending (API key) |
 | 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
+| 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
 ## Validation (CBS)
@@ -401,6 +403,16 @@ neighbouring hexes share a value. `native_resolution` in the `.columns.json` say
 
 zh 2018 -> 2025: deposition 1,398 -> 1,070 mol N/ha, NO2 18.8 -> 14.0 ug/m3 (2023-2024 13.0), TROPOMI 5.70 (2019) ->
 5.17, with the 2020 COVID dip in both. nl: 1,410 -> 1,017 mol N/ha, NO2 13.7 -> 9.1 ug/m3. zh == nl on all shared hexes.
+
+## Critical deposition values (`prepare/kdw.py`)
+
+RIVM's "Koppeltabel relevante habitats" (2026 monitor): 1 ha AERIUS hexagons with, per nitrogen-sensitive habitat
+type, its critical deposition value (KDW, 429-2399 mol N/ha/yr) and relevant area (mapped area x coverage). Each
+hexagon goes to the H3 cell containing its centre: `kdw_habitat_m2`, `kdw_min_mol_ha` (most sensitive habitat),
+`kdw_gewogen_mol_ha`, `kdw_habitat_type` (static), and per year with the RIVM historical deposition series sampled at
+each hexagon: `kdw_overschreden_m2`, `kdw_overschreden_aandeel`, `kdw_overschrijding_mol_ha`. Check: relevant area
+1,711 km2 (RIVM 1,711), 2024 exceedance 71.1% of the area (RIVM, with its 1 ha deposition: 69.3%). zh: 85 km2 of
+relevant habitat, exceeded 26% (2018) -> 8% (2025).
 
 ## Provenance and availability (`config/provenance.toml`)
 

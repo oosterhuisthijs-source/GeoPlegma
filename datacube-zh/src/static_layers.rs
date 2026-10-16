@@ -29,6 +29,8 @@ pub struct RasterLayer {
     #[serde(default)]
     pub nodata: Vec<f64>,
     pub nodata_fill: Option<f64>,
+    /// Values above this are errors in the source: skipped, not filled (e.g. LIWO depths in the millions).
+    pub valid_max: Option<f64>,
 }
 
 #[derive(serde::Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -141,7 +143,10 @@ pub fn run(config: &StaticConfig, hexes: &[Hex], static_dir: &Path, out: &Path, 
             eprintln!("raster {}: {} missing, skipped", layer.name, bil.display());
             continue;
         }
-        let r = aggregate(&h3, &index, &bil, layer.agg, &layer.nodata, layer.nodata_fill, &centres)?;
+        let r = aggregate(&h3, &index, &bil, layer.agg, &layer.nodata, layer.nodata_fill, layer.valid_max, &centres)?;
+        if r.invalid_pixels > 0 {
+            eprintln!("raster {}: {} pixels above valid_max skipped", layer.name, r.invalid_pixels);
+        }
         let filled = r.values.iter().filter(|v| v.is_some()).count();
         eprintln!(
             "raster {}: {:.1}M pixels in grid ({:.1}% with data) -> {filled}/{} hexes ({} from hex centre) in {:.2?}",

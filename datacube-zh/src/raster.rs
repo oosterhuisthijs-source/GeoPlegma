@@ -111,6 +111,8 @@ pub struct RasterResult {
     pub pixels: u64,
     /// ...of which had real (non-nodata) values.
     pub valid_pixels: u64,
+    /// Pixels above `valid_max`: errors in the source, skipped (never filled as nodata).
+    pub invalid_pixels: u64,
     /// Hexes without any pixel centre that were filled from the pixel under the hex centre.
     pub centre_sampled: usize,
 }
@@ -123,6 +125,7 @@ pub fn aggregate(
     agg: RasterAgg,
     nodata: &[f64],
     nodata_fill: Option<f64>,
+    valid_max: Option<f64>,
     centres: &[(f64, f64)],
 ) -> Result<RasterResult> {
     let h = read_header(bil)?;
@@ -139,7 +142,8 @@ pub fn aggregate(
     let n_hex = index.len();
     let is_mode = agg == RasterAgg::Mode;
     let mut totals = vec![Acc::default(); n_hex];
-    let (mut pixels, mut valid) = (0u64, 0u64);
+    let (mut pixels, mut valid, mut invalid) = (0u64, 0u64, 0u64);
+    let too_big = |raw: f64| valid_max.is_some_and(|m| raw > m);
 
     let mut reader = BufReader::with_capacity(1 << 22, File::open(bil)?);
     const BLOCK_ROWS: usize = 512;
@@ -150,17 +154,21 @@ pub fn aggregate(
         let bytes = &mut buf[..h.ncols * 4 * rows];
         reader.read_exact(bytes)?;
 
-        let (block, block_px, block_valid) = bytes
+        let (block, block_px, block_valid, block_invalid) = bytes
             .par_chunks(h.ncols * 4)
             .enumerate()
             .fold(
-                || (HashMap::<usize, Acc>::new(), 0u64, 0u64),
-                |(mut acc, mut px, mut ok), (r, row)| {
+                || (HashMap::<usize, Acc>::new(), 0u64, 0u64, 0u64),
+                |(mut acc, mut px, mut ok, mut bad), (r, row)| {
                     let lat = h.uly - (row0 + r) as f64 * h.ydim;
                     for (c, b) in row.chunks_exact(4).enumerate() {
                         let raw = f32::from_le_bytes(b.try_into().unwrap()) as f64;
                         let is_nodata = raw.is_nan() || nodata.contains(&raw) || raw.abs() > 1e30;
                         if is_nodata && nodata_fill.is_none() {
+                            continue;
+                        }
+                        if !is_nodata && too_big(raw) {
+                            bad += 1;
                             continue;
                         }
                         let lon = h.ulx + c as f64 * h.xdim;
@@ -177,16 +185,16 @@ pub fn aggregate(
                         let v = if is_nodata { nodata_fill.unwrap() } else { raw };
                         acc.entry(i).or_default().add(v, is_mode);
                     }
-                    (acc, px, ok)
+                    (acc, px, ok, bad)
                 },
             )
             .reduce(
-                || (HashMap::new(), 0, 0),
-                |(mut a, pa, oa), (b, pb, ob)| {
+                || (HashMap::new(), 0, 0, 0),
+                |(mut a, pa, oa, ba), (b, pb, ob, bb)| {
                     for (k, v) in b {
                         a.entry(k).or_default().merge(v);
                     }
-                    (a, pa + pb, oa + ob)
+                    (a, pa + pb, oa + ob, ba + bb)
                 },
             );
         for (i, a) in block {
@@ -194,6 +202,7 @@ pub fn aggregate(
         }
         pixels += block_px;
         valid += block_valid;
+        invalid += block_invalid;
         row0 += rows;
     }
 
@@ -210,7 +219,13 @@ pub fn aggregate(
         let mut b = [0u8; 4];
         file.read_exact(&mut b)?;
         let raw = f32::from_le_bytes(b) as f64;
-        Ok(if raw.is_nan() || nodata.contains(&raw) || raw.abs() > 1e30 { nodata_fill } else { Some(raw) })
+        Ok(if raw.is_nan() || nodata.contains(&raw) || raw.abs() > 1e30 {
+            nodata_fill
+        } else if too_big(raw) {
+            None
+        } else {
+            Some(raw)
+        })
     };
     let mut centre_sampled = 0;
     for (i, a) in totals.iter_mut().enumerate() {
@@ -238,5 +253,5 @@ pub fn aggregate(
             })
         })
         .collect();
-    Ok(RasterResult { values, pixels, valid_pixels: valid, centre_sampled })
+    Ok(RasterResult { values, pixels, valid_pixels: valid, invalid_pixels: invalid, centre_sampled })
 }

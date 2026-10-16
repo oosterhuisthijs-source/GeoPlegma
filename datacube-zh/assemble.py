@@ -194,6 +194,8 @@ GDN_SRC = ("RIVM historische reeks stikstofdepositie en verzurende depositie, ed
 GCN_SRC = "RIVM Grootschalige Concentratiekaarten Nederland (GCN), rekenronde van elk jaar, 1 km; prepare/rivm.py"
 TROPOMI_SRC = ("KNMI TEMIS, maandgemiddelde troposferische NO2-kolom van TROPOMI (Sentinel-5P) v1.0, 0,125 graad; "
                "prepare/tropomi.py")
+KDW_SRC = ("RIVM Koppeltabel relevante habitats (editie 2026-10-06; AERIUS-hexagonen 1 ha, KDW per habitattype) + "
+           "RIVM historische reeks stikstofdepositie; prepare/kdw.py")
 MEASURE_INFO = {
     "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {CELL_CENTRE}"),
     "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {CELL_CENTRE}"),
@@ -215,11 +217,23 @@ MEASURE_INFO = {
                              "wolkenvrije overkomsten rond 13:30); leeg in 2018 (pas vanaf mei) en bij < 10 maanden; "
                              f"{CELL_CENTRE}"),
     "tropomi_no2_maanden": (TROPOMI_SRC, "maanden", "aantal maanden met een waarde in dat jaar"),
+    "kdw_habitat_m2": (KDW_SRC, "m2", "relevant stikstofgevoelig habitatoppervlak (gekarteerd oppervlak x dekking) van de "
+                       "AERIUS-hexagonen (1 ha) met hun middelpunt in de cel; leeg = geen relevant habitat"),
+    "kdw_min_mol_ha": (KDW_SRC, "mol N/ha/jaar", "laagste kritische depositiewaarde van de habitattypen in de cel"),
+    "kdw_gewogen_mol_ha": (KDW_SRC, "mol N/ha/jaar", "kritische depositiewaarde gewogen naar relevant habitatoppervlak"),
+    "kdw_habitat_type": (KDW_SRC, "code", "habitattype met het grootste relevante oppervlak (bijv. H4030 droge heiden)"),
+    "kdw_overschreden_m2": (KDW_SRC, "m2", "relevant habitatoppervlak waar de depositie (gdn_stikstof, 1 km, op elk "
+                            "AERIUS-hexagon) boven de KDW ligt"),
+    "kdw_overschreden_aandeel": (KDW_SRC, "0-1", "aandeel van kdw_habitat_m2 boven de KDW"),
+    "kdw_overschrijding_mol_ha": (KDW_SRC, "mol N/ha/jaar", "gemiddelde overschrijding over het relevante habitat: "
+                                  "som(oppervlak x max(0, depositie - KDW)) / oppervlak"),
 }
 MEASURE_WARNINGS = {
     "gcn_": ("elk jaar is een eigen rekenronde: RIVM zegt dat de rondes niet als reeks achter elkaar te zetten zijn "
              "(de kalibratie op metingen is in de loop van de jaren veranderd); de landelijke daling is echt, lokale "
              "trends kunnen methode zijn"),
+    "kdw_overschr": ("depositie van het 1 km-grid op elk AERIUS-hexagon; RIVM rekent met depositie per hectare, dus "
+                     "lokaal anders; landelijk 2024: 71,1% boven de KDW tegen 69,3% bij RIVM"),
     "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
                  "dus alleen een regionaal signaal"),
 }
@@ -265,8 +279,8 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 # Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
-# (prepare/knmi.py, rivm.py, tropomi.py). Read once, filtered per year.
-YEARLY_FILES = ("knmi", "rivm", "tropomi")
+# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py). Read once, filtered per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw")
 _yearly_cache: dict = {}
 
 

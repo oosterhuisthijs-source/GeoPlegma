@@ -60,6 +60,20 @@ native_resolution = "0.125 degree (~14 x 9 km), satellite"
 reference_period = "cloud-free overpasses (~13:30) in calendar year Y"
 time = "yearly"
 
+[[rule]]
+columns = ["kdw_habitat_m2", "kdw_min_mol_ha", "kdw_gewogen_mol_ha", "kdw_habitat_type"]
+tier = "register"
+native_resolution = "AERIUS hexagon (1 ha), habitat map per Natura 2000 area"
+reference_period = "habitat maps and KDW values of the 2026 monitor"
+time = "static"
+
+[[rule]]
+columns = ["kdw_overschr*"]
+tier = "modelled"
+native_resolution = "RIVM 1 km deposition grid on 1 ha habitat hexagons"
+reference_period = "calendar year Y (deposition), habitat state of 2026"
+time = "yearly"
+
 # --- CBS 100 m squares -------------------------------------------------------------------------------
 [[rule]]
 columns = ["cbs_coverage", "bijgeschat_*"]

@@ -11,6 +11,7 @@
 #   nodata      = source values treated as "no data"
 #   nodata_fill = value nodata pixels count as (omit: they are skipped).
 #                 For flood depth "no data" means "does not flood", i.e. 0.
+#   valid_max   = values above this are source errors: skipped, NOT filled (a hex with only such pixels is null)
 #   resolution  = fetch resolution in metres (omit: native)
 #   Hexes that contain no pixel centre (rasters coarser than ~300m) take the
 #   value of the pixel under the hex centre instead.
@@ -44,6 +45,7 @@ resolution = 10
 agg = "mean"
 nodata = [-9999]
 nodata_fill = 0.0
+valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; deep river/estuary channels reach ~90 m
 
 [[raster]]
 name = "flooddepth_2"
@@ -54,6 +56,7 @@ resolution = 10
 agg = "mean"
 nodata = [-9999]
 nodata_fill = 0.0
+valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; deep river/estuary channels reach ~90 m
 
 [[raster]]
 name = "flooddepth_3"
@@ -64,6 +67,7 @@ resolution = 10
 agg = "mean"
 nodata = [-9999]
 nodata_fill = 0.0
+valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; deep river/estuary channels reach ~90 m
 
 [[raster]]
 name = "flooddepth_4"
@@ -74,6 +78,7 @@ resolution = 10
 agg = "mean"
 nodata = [-9999]
 nodata_fill = 0.0
+valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; deep river/estuary channels reach ~90 m
 
 [[raster]]
 name = "flooddepth_5"
@@ -84,6 +89,7 @@ resolution = 10
 agg = "mean"
 nodata = [-9999]
 nodata_fill = 0.0
+valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; deep river/estuary channels reach ~90 m
 
 # --- RIVM Atlas Leefomgeving / Atlas Natuurlijk Kapitaal ---------------------
 
