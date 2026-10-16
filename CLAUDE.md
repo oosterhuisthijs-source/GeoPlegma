@@ -194,7 +194,7 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.6, `datacube_nl` 2026.10.16.5. Talk to
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.16.7, `datacube_nl` 2026.10.16.6. Talk to
 the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
 
 Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
@@ -224,6 +224,9 @@ Never edit the game repos from here:
 - Source fixes found by the audit/step detection: Wijk- en Buurtkaart 2021 `percentage_ongehuwd` wrong at CBS
   (recomputed, `[[remainder]]` in `config/wb.toml`); CBS columns with nothing published in a year are null, not 0
   (`cbs.rs`); suppressed CBS breakdown parts filled in (`[[parts]]`).
+- Reported by the game session and fixed: from Wijk- en Buurtkaart 2019 on CBS publishes average buurt incomes
+  for only ~14% of buurten; `[fallback]` in `config/wb.toml` fills from wijk, else gemeente (`*_eigen_buurt` =
+  share with the buurt's own value). Step detection now also flags fill-rate drops (`kind: fill`).
 - Audit of the releases (integrity, ranges, zh == nl on shared hexes, res 9/8/7 totals, logic checks): clean.
   The audit scripts were ad hoc (session scratchpad), not in the repo.
 - Open, offered but not done: weekly systemd user timer for `sources.py` (needs the user's OK); the history
