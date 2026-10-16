@@ -17,6 +17,8 @@ so there is no second list to keep in sync; the version available is read from t
     3dbag         sources/static/3dbag-pand.parquet      source.coop mirror Last-Modified
     rivm_<layer>  config/static.toml WCS coverage id     WCS GetCapabilities: same id with newer dates
     wind          prepare/wind.py LAYER                  RIVM WFS GetCapabilities: same layer with a newer date
+    osm           work/layers/osm.parquet timestamp      Geofabrik extract Last-Modified (only listed: OSM
+                                                         changes daily, refresh when convenient)
 
 Prints a table and writes <data>/sources_check.json. "NEW" = a newer version for a year the cube
 has (or, for CBS vk100, a new year: that is what extends the cube); "+" = a year after the cube's
@@ -225,10 +227,19 @@ def check_wind(data: Path) -> dict:
     return result(used, best, [best] if best != used else [], "RIVM wind turbine snapshot (static layer)")
 
 
+def check_osm(data: Path) -> dict:
+    import pyarrow.parquet as pq  # only this check needs it
+    f = data / "work/layers/osm.parquet"
+    used = json.loads(pq.read_schema(f).metadata[b"datacube"])["osm_timestamp"] if f.exists() else "not prepared"
+    remote = last_modified("https://download.geofabrik.de/europe/netherlands-latest.osm.pbf")
+    return result(f"extract {used[:10]}", f"extract {remote.date()}", [],
+                  "OpenStreetMap changes daily; not flagged NEW, refresh with prepare/osm.py when convenient")
+
+
 CHECKS = {
     "cbs_vk100": check_cbs_vk100, "wijkbuurt": check_wijkbuurt, "leefbaarometer": check_leefbaarometer,
     "nbbg": check_nbbg, "brp": check_brp, "lgn": check_lgn, "tessera": check_tessera,
-    "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind,
+    "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind, "osm": check_osm,
 }
 
 

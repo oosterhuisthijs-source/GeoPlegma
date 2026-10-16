@@ -10,6 +10,7 @@ Writes <data>/releases/datacube_<region>/<version>/:
 - datacube_<region>/, .parquet, .columns.json   copies of the assembled cube (read-only files)
 - volledige_tijdreeks_delta/                    (zh) the 0-255 drop-in export
 - datacube_<region>_r8/_r7.parquet + .columns.json   coarser H3 resolutions (coarsen.py), when built
+- datacube_<region>_lijnen.parquet              OSM motorways/railways as whole lines (GeoParquet), when built
 - manifest.json   version, git commit, assembly time, rows/columns/years, sources per column group,
                   sha256 + size of every file, contract results, notes
 - stats.json      per column and year: non-null share, min, max, mean (numeric) / distinct (string)
@@ -298,6 +299,8 @@ def main():
         if coarse.stat().st_mtime < cube_time:
             sys.exit(f"{coarse.name} is older than {name}.parquet: run coarsen.py --region {args.region} first")
         sources += [coarse, coarse.with_suffix(".columns.json")]
+    if (out / f"{name}_lijnen.parquet").exists():
+        sources.append(out / f"{name}_lijnen.parquet")  # OSM lines (prepare/osm.py), copied by assemble.py
 
     root = data / "releases" / name
     dest = root / args.version

@@ -74,6 +74,10 @@ python3 datacube-zh/prepare/lgn.py --region zh      # -> work/layers/lgn_<year>.
 # 4g. wind turbines (RIVM WFS snapshot, static), see "Wind turbines" below
 python3 datacube-zh/prepare/wind.py --region zh     # -> work/layers/wind.parquet (seconds)
 
+# 4h. OSM motorways + railways (Geofabrik extract, latest only), see "OpenStreetMap lines" below
+curl -L -o own_data/sources/osm/netherlands-latest.osm.pbf https://download.geofabrik.de/europe/netherlands-latest.osm.pbf
+uv run datacube-zh/prepare/osm.py --region zh       # -> work/layers/osm.parquet + osm_lijnen.parquet (~20 s)
+
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
 
@@ -102,6 +106,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2018-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
 | 5e | BAG verblijfsobjecten per gebruiksdoel (`num_*`, yearly 2018-2025) | [LV BAG levenscyclus-extract](https://service.pdok.nl/kadaster/bag/atom/bag.xml) (PDOK, full history) | state on 1 January; point -> geoplegma `zone_from_point`; `config/bag.toml` | done |
 | 5f | wind turbines (`wind_*`, static, snapshot January 2026) | [RIVM windturbines](https://data.overheid.nl/dataset/54341-windturbines---vermogen) (WFS `data.rivm.nl/geo/alo/wfs`) | `prepare/wind.py`: turbine point -> H3 cell; count, power, max hub/rotor/tip height; distance hex centre -> nearest turbine | done |
+| 5g | OSM motorways + railways: line file + `osm_*_lengte_m` per cell (static, latest extract) | [Geofabrik](https://download.geofabrik.de/europe/netherlands.html) `netherlands-latest.osm.pbf` (© OpenStreetMap contributors, ODbL) | `prepare/osm.py`: ways by tag, exact line x hex intersection in RD | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -315,6 +320,28 @@ water, plus 13 foreign ones in border cells), 7.0 GW.
 **Static:** the source has no construction or demolition year, so every cube year carries the
 January 2026 turbines. A real time series would need the turbines' commissioning dates (e.g. from
 OpenStreetMap history or older RIVM snapshots; `rivm_20240101_…` exists); not done.
+
+## OpenStreetMap lines (`prepare/osm.py`, static)
+
+For the games' moving cars and trains. Ways with `highway=motorway/motorway_link/trunk/trunk_link` or
+`railway=rail/light_rail/subway/tram` from the latest Geofabrik Netherlands extract (timestamp in the
+files' metadata and the column manifest). Two outputs:
+
+- `datacube_<region>_lijnen.parquet` (copied into every release): one row per OSM way that crosses the
+  region, **whole ways, not clipped**, so vehicles can move along them across cells. GeoParquet (WKB,
+  lon/lat) with `osm_id`, `soort` (snelweg, snelweg_afrit, autoweg, autoweg_afrit, spoor, lightrail,
+  metro, tram), `naam`, `ref`, `rijstroken`, `maxsnelheid_kmh`, `eenrichting` (one-way geometry runs in
+  the direction of travel), `tunnel`, `brug`, `laag`, `geelektrificeerd`, `gebruik`, `dienst` (yard,
+  siding, spur), `lengte_m` and `cellen` (the region's res-9 cells it passes through).
+- per cell in the cube (sum at res 8/7): `osm_snelweg_lengte_m`, `osm_autoweg_lengte_m`,
+  `osm_spoor_lengte_m` (through track), `osm_spoor_overig_lengte_m` (`service=*` tracks) and
+  `osm_metro_tram_lengte_m`. Exact length inside the hex (line x hex boundary in RD); the per-cell
+  lengths add up exactly to the lines clipped to the region. Each carriageway and each track counts
+  separately; tunnels and bridges are included (filter on `tunnel` in the line file to hide them).
+
+zh: 15,633 ways; 981 km snelweg, 230 km autoweg, 833 km spoor, 641 km service track, 757 km
+metro/tram. nl: 72,013 ways; 6,964 / 2,377 / 5,695 / 1,956 / 1,196 km. OSM has no history in this
+setup, so every cube year carries the same network. Licence: ODbL, credit "© OpenStreetMap contributors".
 
 ## Source checks (`sources.py`)
 

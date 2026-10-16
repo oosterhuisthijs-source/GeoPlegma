@@ -12,6 +12,8 @@ Writes, under the region's out directory (config/regions.toml):
                                year at a time, so the national table never
                                has to fit in memory.
 - datacube_<region>.columns.json   per-column manifest
+- datacube_<region>_lijnen.parquet  OSM motorways/railways as whole lines (GeoParquet, prepare/osm.py),
+                               when prepared; the cube carries their lengths per cell (osm_*_lengte_m)
 - volledige_tijdreeks_delta/   (zh only) drop-in replacement for ruimtelijke-assistent:
                                the original's exact columns, order and types,
                                CBS columns min-max scaled to 0-255 over all years
@@ -151,6 +153,17 @@ WIND_INFO = {
 }
 
 
+OSM_SOURCE = ("OpenStreetMap (Geofabrik netherlands-latest.osm.pbf, stand {stamp}), © OpenStreetMap contributors, "
+              "ODbL; prepare/osm.py; de lijnen zelf staan in datacube_<regio>_lijnen.parquet")
+OSM_INFO = {
+    "osm_snelweg_lengte_m": "lengte snelweg (highway=motorway + motorway_link); elke rijbaan apart",
+    "osm_autoweg_lengte_m": "lengte autoweg (highway=trunk + trunk_link); elke rijbaan apart",
+    "osm_spoor_lengte_m": "lengte spoor (railway=rail zonder service-tag: doorgaand spoor), elk spoor apart",
+    "osm_spoor_overig_lengte_m": "lengte emplacement-, opstel- en raccordementsporen (railway=rail met service-tag)",
+    "osm_metro_tram_lengte_m": "lengte metro-, lightrail- en tramspoor (railway=subway/light_rail/tram)",
+}
+
+
 def load_lbm(work: Path, year: int) -> pa.Table | None:
     """Leefbaarometer: biennial measurements; odd years take the previous one."""
     src = year if year % 2 == 0 else year - 1
@@ -261,11 +274,15 @@ def valid_shares(table: pa.Table) -> dict:
     return {c: round(1 - table[c].null_count / n, 4) for c in table.column_names}
 
 
+OSM_STAMP = None  # OSM extract timestamp, set in main() from work/layers/osm.parquet
+
+
 def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -> dict:
     """Per-column source/aggregation/coverage, for downstream docs (e.g. the
     SimCityZH explanation page)."""
     cbs = tomllib.loads((config_dir / "cbs.toml").read_text())
     static = tomllib.loads((config_dir / "static.toml").read_text())
+    osm_stamp = OSM_STAMP or "onbekend"
     cbs_src = "CBS Kaart van 100m x 100m met statistieken (vierkantstatistieken), per jaar"
     cbs_aggs = {
         "sum": "som, verdeeld naar oppervlakteaandeel van het CBS-vierkant (overlap / vierkantoppervlak)",
@@ -378,6 +395,9 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         elif name.startswith("wind_"):
             src = WIND_SOURCE
             unit, agg = WIND_INFO[name]
+        elif name.startswith("osm_"):
+            src, unit = OSM_SOURCE.format(stamp=osm_stamp), "m"
+            agg = OSM_INFO[name] + "; exacte lengte binnen de cel (lijn x zeshoek in RD), tunnels en bruggen inbegrepen"
         elif name.startswith("ndff_"):
             src = ("NDFF soortendiversiteit per kilometerhok (BIJ12, editie 2017-11-15; NDFF-waarnemingen "
                    "van de 10 jaar ervoor, 8 soortgroepen, gecorrigeerd voor waarneemintensiteit), "
@@ -448,9 +468,14 @@ def main():
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
-    if (work / "layers/wind.parquet").exists():
-        base = left_join(base, pq.read_table(work / "layers/wind.parquet"), "h3_id")
+    for layer in ("wind", "osm"):
+        if (work / f"layers/{layer}.parquet").exists():
+            base = left_join(base, pq.read_table(work / f"layers/{layer}.parquet"), "h3_id")
     lgn = lgn_columns(work)
+    global OSM_STAMP
+    if (work / "layers/osm.parquet").exists():
+        meta = json.loads(pq.read_schema(work / "layers/osm.parquet").metadata[b"datacube"])
+        OSM_STAMP = meta["osm_timestamp"]
 
     delta_path = out / name
     if delta_path.exists():
@@ -469,6 +494,10 @@ def main():
         del t
     writer.close()
     log(f"wrote {delta_path} (partitioned by year_int) and {out / f'{name}.parquet'}")
+
+    if (work / "layers/osm_lijnen.parquet").exists():
+        shutil.copy2(work / "layers/osm_lijnen.parquet", out / f"{name}_lijnen.parquet")
+        log(f"wrote {out / f'{name}_lijnen.parquet'} (OSM motorways and railways, whole lines)")
 
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))

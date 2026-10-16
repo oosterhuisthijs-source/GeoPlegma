@@ -119,6 +119,14 @@ trend = "no"
 note = "RIVM turbine register, snapshot January 2026, repeated in every year (no construction year in the source): turbines built after 2018 also appear in the early years. Distance counts turbines of any country, on land and at sea, from the cell centre."
 
 [[concept]]
+name = "Motorways and railways (OpenStreetMap)"
+use = ["osm_snelweg_lengte_m", "osm_spoor_lengte_m", "osm_metro_tram_lengte_m"]
+alternatives = ["osm_autoweg_lengte_m", "osm_spoor_overig_lengte_m"]
+covers = ["osm_*"]
+trend = "no"
+note = "Latest OSM extract repeated in every year (no history). Metres of line inside the cell; every carriageway and every track counts separately, tunnels included. The lines themselves (whole, with lanes, speed, one-way direction, tunnel/bridge) are in datacube_<region>_lijnen.parquet. Credit: © OpenStreetMap contributors (ODbL)."
+
+[[concept]]
 name = "Heat, green, water storage, flooding, ground level"
 use = ["hitte", "groenklasse", "waterberging", "flooddepth_1", "groundheight"]
 trend = "no"

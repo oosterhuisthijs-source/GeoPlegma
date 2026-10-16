@@ -16,6 +16,7 @@ res 9, not via res 8, so weights stay exact). Rules per column (`rule_for`):
 - TESSERA embeddings / change                           -> mean weighted by its own pixel counts
 - `*_min` / `*_max`                                     -> min / max
 - wind turbines (`WIND_RULES`)                          -> count/power summed, heights max, distance min
+- OSM line lengths (`osm_*_lengte_m`)                   -> sum
 - categories (dominant class, Natura 2000, soil, buurt)  -> area-weighted majority; buurt/wijk/gemeente
                                                            and code/name pairs come from the same child value
 - flags (bool)                                          -> true if any child is true
@@ -78,6 +79,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return "max", None
     if name in WIND_RULES:
         return WIND_RULES[name], None
+    if name.startswith("osm_") and name.endswith("_lengte_m"):
+        return "sum", None
     if name.startswith("tessera_"):
         if name.endswith("pixels"):
             return "sum", None
