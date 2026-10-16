@@ -236,9 +236,10 @@ def main():
         cnt = counts[y].astype(np.float64)
         frac = np.divide(cnt, tot[:, None], out=np.zeros_like(cnt), where=tot[:, None] > 0)
         valid = cnt.sum(axis=1)
-        empty = no_pixels | (valid == 0)
+        # Fractions are shares of the hex area, so a hex whose pixels are all nodata (sea before
+        # 2021) gets 0 everywhere and lgn_coverage 0; only hexes outside the raster are null.
+        empty = no_pixels
         cols = {"h3_id": pa.array(h3_ids), "year_int": pa.array(np.full(n_hex, y, dtype=np.int64))}
-        mask = pa.array(empty)
         names = {}
         for j, code in enumerate(codes):
             name = renamed[code]["name"] if code in renamed and y <= renamed[code]["until"] else classes[code]
@@ -250,13 +251,14 @@ def main():
             cols[f"lgn_groep_{g}"] = pa.array(frac[:, js].sum(axis=1), mask=empty)
         cols["lgn_coverage"] = pa.array(valid / np.maximum(tot, 1), mask=no_pixels)
         dom = cnt.argmax(axis=1)
-        cols["landgebruiksklasse"] = pa.array([None if e else names[d].replace("_", " ") for d, e in zip(dom, empty)],
+        cols["landgebruiksklasse"] = pa.array([None if v == 0 else names[d].replace("_", " ") for d, v in zip(dom, valid)],
                                                pa.string())
         cols["lgn_source_year"] = pa.array(np.full(n_hex, y, dtype=np.int64))
         t = pa.table(cols)
         pq.write_table(t, out_dir / f"lgn_{y}.parquet", compression="zstd")
         log(f"lgn_{y}: {t.num_rows} hexes, {sum(1 for c in cols if c.endswith('_fraction'))} classes, "
-            f"no data {int(empty.sum())}, median coverage {np.median(valid[~empty] / tot[~empty]):.4f}")
+            f"outside raster {int(empty.sum())}, all nodata {int(((valid == 0) & ~empty).sum())}, "
+            f"median coverage {np.median(valid[~empty] / tot[~empty]):.4f}")
     log(f"done in {time.time() - t0:.0f}s")
 
 

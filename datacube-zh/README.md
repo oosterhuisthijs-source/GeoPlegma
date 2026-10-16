@@ -78,6 +78,9 @@ python3 datacube-zh/prepare/lgn.py --region zh      # -> work/layers/lgn_<year>.
 #             -> out/volledige_tijdreeks_delta (drop-in replacement, 0-255)
 uv run datacube-zh/assemble.py
 
+# 5b. coarser H3 resolutions (res 8 and 7) from the res-9 cube, see "Coarser resolutions"
+uv run datacube-zh/coarsen.py --region zh            # -> out/datacube_zh_r8.parquet, _r7 (+ .columns.json)
+
 # 6. freeze it as an immutable release for consumers (games, ruimtelijke-assistent), see "Releases"
 uv run datacube-zh/release.py --region zh --notes "what changed"
 ```
@@ -293,6 +296,19 @@ Known and accepted (documented, not "fixed"):
   NBBG also counts farmyards and ditches).
 - NBBG (land use) + BRP (crops, yearly) complement LGN: NBBG has the functional categories
   (woonterrein, bedrijfsterrein, recreatie), LGN the yearly cover (crops, nature types, urban green).
+
+## Coarser resolutions (`coarsen.py`)
+
+`out/datacube_<region>_r8.parquet` and `_r7` (H3 res 8 ~0.74 km2, res 7 ~5.2 km2), same columns plus
+`n_children` (res-9 cells in the grid, max 7 / 49) and `covered_area_m2`; built straight from res 9
+(res 7 not via res 8). Each column's rule is in the `_r<res>.columns.json` (`rule`, `weight`):
+sums for counts (`*_sum`, `num_*`, 3D BAG totals, pixel counts), area-weighted means for shares
+(`*_fraction`, `*_coverage`, `lgn_groep_*`; relative to the covered part of the coarse cell), means
+weighted by area x layer coverage for averages (CBS, `wb_*`, `lbm_*`), by footprint for 3D BAG
+height/build year, by pixel counts for TESSERA; min/max for `*_min`/`*_max`; area-weighted majority
+for categories (buurt/wijk/gemeente and code/name pairs taken from the same value); any-true for flags.
+Checks (zh): inhabitants, homes, building volume and class areas identical at res 9/8/7; LGN groups
+still sum to `lgn_coverage`. Releases include these files when they are newer than the res-9 cube.
 
 ## Regions, years and later additions
 
