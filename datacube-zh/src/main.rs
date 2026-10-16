@@ -14,6 +14,7 @@ mod brp;
 mod cbs;
 mod geoparquet;
 mod grid;
+mod hexindex;
 mod overlay;
 mod raster;
 mod static_layers;
@@ -80,6 +81,22 @@ enum Command {
         years: Vec<i64>,
         #[arg(long, default_value = "datacube-zh/config/bag.toml")]
         config: PathBuf,
+    },
+    /// Hex index raster for a regular RD grid: per pixel the res-9 hex (position in grid.parquet + 1, 0 = none).
+    /// Default: the Sentinel-2 NDVI grid (10 m, nl box 0-300 km x 300-625 km) -> <work>/s2/hexindex_10m.u32.
+    Hexindex {
+        #[arg(long, default_value_t = 0.0)]
+        x0: f64,
+        #[arg(long, default_value_t = 625000.0)]
+        y0: f64,
+        #[arg(long, default_value_t = 10.0)]
+        res: f64,
+        #[arg(long, default_value_t = 30000)]
+        cols: usize,
+        #[arg(long, default_value_t = 32500)]
+        rows: usize,
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Aggregate the static raster/vector layers from config/static.toml.
     Static {
@@ -161,6 +178,12 @@ fn main() -> Result<()> {
             let config = bag::BagConfig::load(&config)?;
             let hexes = grid::load_hexes(&grid_path)?;
             bag::run(&config, &hexes, &work.join("bag/vbo.parquet"), &years, &work.join("layers"))?;
+        }
+        Command::Hexindex { x0, y0, res, cols, rows, out } => {
+            let hexes = grid::load_hexes(&grid_path)?;
+            let out = out.unwrap_or_else(|| work.join("s2/hexindex_10m.u32"));
+            std::fs::create_dir_all(out.parent().unwrap())?;
+            hexindex::run(&hexes, &hexindex::GridDef { x0, y0, res, cols, rows }, &out)?;
         }
         Command::Static { config, only } => {
             let config = static_layers::StaticConfig::load(&config)?;

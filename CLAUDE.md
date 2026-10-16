@@ -222,7 +222,21 @@ Never edit the game repos from here:
   own CLAUDE.md has the layout. `~/Downloads/SimCityZH v0.95/` is gone (only a `MOVED.md` stub).
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
-### Session 2026-10-16 (late evening): measurement layers + analyst-agent plan (pick up here)
+### Night 2026-10-16/17: running unattended (pick up here)
+
+- `datacube-ndvi-watch.service` (systemd user unit): waits for the 8 Earth Engine NDVI exports
+  (`prepare/s2_ndvi.py`, tasks in `own_data/sources/s2_ndvi/tasks.json`, output gs://som-scenario/datacube/ndvi/),
+  downloads them, then runs `prepare/s2_metrics.py` once -> `work_nl/layers/s2.parquet`. Log:
+  `own_data/sources/s2_ndvi/watch.log`. It does NOT release. Next: validate (sealed share vs 3D BAG/NBBG, new
+  sealing vs new BAG addresses, 2018/2022 anomaly vs KNMI deficit, green share vs groenklasse), wire `s2` into
+  assemble (YEARLY_FILES), provenance/guide/coarsen, then release together with KNMI.
+- `datacube-knmi-download.service`: KNMI daily grids (log `own_data/sources/knmi/download.log`); then
+  `prepare/knmi.py --region nl`.
+- Earth Engine auth = gcloud Application Default Credentials (quota project som-scenario); the old
+  `~/.config/earthengine/credentials` (expired token) was moved to `credentials.old`.
+- Hex index raster (geoplegma, `datacube-zh --region nl hexindex`): `work_nl/s2/hexindex_10m.u32` (3.9 GB).
+
+### Session 2026-10-16 (late evening): measurement layers + analyst-agent plan
 
 - Goal (user): use the NL cube to tell "what happened in the Netherlands" with correlations over time, backed by
   more *measured* data, and later LLM agents as analysts. Timeline stays 2018-2025 (set by LGN/CBS/BAG; TROPOMI
