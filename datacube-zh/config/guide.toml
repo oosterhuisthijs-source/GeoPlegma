@@ -111,6 +111,14 @@ trend = "no"
 note = "Static RIVM maps. Pick ONE edition per game; do not read the difference as change (2022 is 1.8 dB quieter on average, mostly method)."
 
 [[concept]]
+name = "Wind turbines"
+use = ["wind_aantal", "wind_vermogen_kw", "wind_afstand_min_km"]
+alternatives = ["wind_tiphoogte_max_m", "wind_ashoogte_max_m", "wind_rotordiameter_max_m"]
+covers = ["wind_*"]
+trend = "no"
+note = "RIVM turbine register, snapshot January 2026, repeated in every year (no construction year in the source): turbines built after 2018 also appear in the early years. Distance counts turbines of any country, on land and at sea, from the cell centre."
+
+[[concept]]
 name = "Heat, green, water storage, flooding, ground level"
 use = ["hitte", "groenklasse", "waterberging", "flooddepth_1", "groundheight"]
 trend = "no"

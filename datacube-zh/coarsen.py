@@ -15,6 +15,7 @@ res 9, not via res 8, so weights stay exact). Rules per column (`rule_for`):
 - 3D BAG mean height / build year                       -> mean weighted by footprint
 - TESSERA embeddings / change                           -> mean weighted by its own pixel counts
 - `*_min` / `*_max`                                     -> min / max
+- wind turbines (`WIND_RULES`)                          -> count/power summed, heights max, distance min
 - categories (dominant class, Natura 2000, soil, buurt)  -> area-weighted majority; buurt/wijk/gemeente
                                                            and code/name pairs come from the same child value
 - flags (bool)                                          -> true if any child is true
@@ -55,6 +56,8 @@ TESSERA_WEIGHT = {
     "tessera_change_nonagri_mean": "tessera_nonagri_pixels", "tessera_change_nonagri_share": "tessera_nonagri_pixels",
     "tessera_change_nonagri_share_dc": "tessera_nonagri_pixels",
 }
+WIND_RULES = {"wind_aantal": "sum", "wind_vermogen_kw": "sum", "wind_ashoogte_max_m": "max",
+              "wind_rotordiameter_max_m": "max", "wind_tiphoogte_max_m": "max", "wind_afstand_min_km": "min"}
 
 
 def log(*a):
@@ -73,6 +76,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return "any", None
     if name in ("lgn_source_year", "bbg_source_year", "lbm_source_year", "tessera_change_from"):
         return "max", None
+    if name in WIND_RULES:
+        return WIND_RULES[name], None
     if name.startswith("tessera_"):
         if name.endswith("pixels"):
             return "sum", None

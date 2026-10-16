@@ -138,6 +138,19 @@ BAG_AGG = ("aantal verblijfsobjecten met gebruiksdoel {func} waarvan het punt in
            "in gebruik niet ingemeten / verbouwing); een object met meerdere gebruiksdoelen telt bij elk mee")
 
 
+WIND_SOURCE = ("RIVM Atlas Leefomgeving, windturbines (vermogen, ashoogte, rotordiameter), WFS laag "
+               "rivm_20260101_windturbines_vermogen (stand januari 2026, incl. Belgische en Duitse turbines bij de grens); "
+               "prepare/wind.py")
+WIND_INFO = {
+    "wind_aantal": ("aantal", "aantal windturbines waarvan het punt in de cel ligt"),
+    "wind_vermogen_kw": ("kW", "som van het nominaal vermogen van die turbines"),
+    "wind_ashoogte_max_m": ("m", "hoogste ashoogte van die turbines (leeg zonder turbine)"),
+    "wind_rotordiameter_max_m": ("m", "grootste rotordiameter van die turbines (leeg zonder turbine)"),
+    "wind_tiphoogte_max_m": ("m", "hoogste tiphoogte (ashoogte + halve rotordiameter) van die turbines (leeg zonder turbine)"),
+    "wind_afstand_min_km": ("km", "afstand van het celcentrum tot de dichtstbijzijnde turbine (alle landen, land en zee)"),
+}
+
+
 def load_lbm(work: Path, year: int) -> pa.Table | None:
     """Leefbaarometer: biennial measurements; odd years take the previous one."""
     src = year if year % 2 == 0 else year - 1
@@ -362,6 +375,9 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                                 f"paar (p90 niet-landbouwafstanden t.o.v. 2024->2025), {part}; gebruik deze om jaren te vergelijken")
                     if name.endswith("_share_dc"):
                         unit = "0-1"
+        elif name.startswith("wind_"):
+            src = WIND_SOURCE
+            unit, agg = WIND_INFO[name]
         elif name.startswith("ndff_"):
             src = ("NDFF soortendiversiteit per kilometerhok (BIJ12, editie 2017-11-15; NDFF-waarnemingen "
                    "van de 10 jaar ervoor, 8 soortgroepen, gecorrigeerd voor waarneemintensiteit), "
@@ -401,6 +417,9 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
             entry["warning"] = ("niet vergelijken tussen jaren: elk jaar heeft een eigen ruisniveau in de invoer (2017, 2021 "
                                 "en 2024 zijn ruiziger), dus het aandeel springt per jaarpaar zonder echte trend; gebruik "
                                 "tessera_change_nonagri_share_dc voor tijdreeksen")
+        elif name.startswith("wind_"):
+            entry["warning"] = ("statisch: de turbines van januari 2026 in elk jaar (geen bouwjaar in de bron), dus turbines "
+                                "die na 2018 zijn gebouwd staan ook in de vroege jaren en gesloopte turbines ontbreken")
         elif name.endswith("_share_dc"):
             entry["warning"] = "corrigeert voor ruis per jaarpaar, maar haalt daarmee ook echte provinciebrede verandering weg"
         manifest[name] = entry
@@ -429,6 +448,8 @@ def main():
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
+    if (work / "layers/wind.parquet").exists():
+        base = left_join(base, pq.read_table(work / "layers/wind.parquet"), "h3_id")
     lgn = lgn_columns(work)
 
     delta_path = out / name

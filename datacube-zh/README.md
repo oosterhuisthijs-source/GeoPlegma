@@ -71,6 +71,9 @@ datacube-zh/prepare/static.py --only ndff_soortendiversiteit,ndff_soortendiversi
 # 4f. LGN2018-LGN2025 (WUR 5 m rasters, zips in own_data/lgn/), see config/lgn.toml and "LGN" below
 python3 datacube-zh/prepare/lgn.py --region zh      # -> work/layers/lgn_<year>.parquet (~40 s; nl ~10 min)
 
+# 4g. wind turbines (RIVM WFS snapshot, static), see "Wind turbines" below
+python3 datacube-zh/prepare/wind.py --region zh     # -> work/layers/wind.parquet (seconds)
+
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
 
@@ -98,6 +101,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5c | BRP crop groups (15 groups, yearly 2018-2023) | BRP gewaspercelen (RVO via PDOK) | overlay fractions per crop group; `config/brp_groups.toml` | done |
 | 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2018-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
 | 5e | BAG verblijfsobjecten per gebruiksdoel (`num_*`, yearly 2018-2025) | [LV BAG levenscyclus-extract](https://service.pdok.nl/kadaster/bag/atom/bag.xml) (PDOK, full history) | state on 1 January; point -> geoplegma `zone_from_point`; `config/bag.toml` | done |
+| 5f | wind turbines (`wind_*`, static, snapshot January 2026) | [RIVM windturbines](https://data.overheid.nl/dataset/54341-windturbines---vermogen) (WFS `data.rivm.nl/geo/alo/wfs`) | `prepare/wind.py`: turbine point -> H3 cell; count, power, max hub/rotor/tip height; distance hex centre -> nearest turbine | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
 
 ## Validation (CBS)
@@ -296,6 +300,21 @@ Known and accepted (documented, not "fixed"):
   NBBG also counts farmyards and ditches).
 - NBBG (land use) + BRP (crops, yearly) complement LGN: NBBG has the functional categories
   (woonterrein, bedrijfsterrein, recreatie), LGN the yearly cover (crops, nature types, urban green).
+
+## Wind turbines (`prepare/wind.py`, static)
+
+RIVM's `rivm_<date>_windturbines_vermogen` layer has one point per turbine with power (kW), hub height
+and rotor diameter, for the Netherlands (land, inland water, sea) plus Belgian and German turbines near
+the border. The snapshot in use (`rivm_20260101_…`, 5,357 turbines) is pinned in `prepare/wind.py`
+and downloaded once to `own_data/sources/wind/`. Per hex: `wind_aantal`, `wind_vermogen_kw`,
+`wind_ashoogte_max_m`, `wind_rotordiameter_max_m`, `wind_tiphoogte_max_m` (empty without a turbine)
+and `wind_afstand_min_km` (hex centre to the nearest turbine of any country, land or sea).
+zh: 268 turbines in 258 hexes, 775 MW; nl: 3,605 turbines (all 3,592 Dutch ones on land and inland
+water, plus 13 foreign ones in border cells), 7.0 GW.
+
+**Static:** the source has no construction or demolition year, so every cube year carries the
+January 2026 turbines. A real time series would need the turbines' commissioning dates (e.g. from
+OpenStreetMap history or older RIVM snapshots; `rivm_20240101_…` exists); not done.
 
 ## Source checks (`sources.py`)
 

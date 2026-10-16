@@ -16,6 +16,7 @@ so there is no second list to keep in sync; the version available is read from t
     bag           sources/bag/9999VBO<ddmmyyyy>.zip      PDOK extract Last-Modified
     3dbag         sources/static/3dbag-pand.parquet      source.coop mirror Last-Modified
     rivm_<layer>  config/static.toml WCS coverage id     WCS GetCapabilities: same id with newer dates
+    wind          prepare/wind.py LAYER                  RIVM WFS GetCapabilities: same layer with a newer date
 
 Prints a table and writes <data>/sources_check.json. "NEW" = a newer version for a year the cube
 has (or, for CBS vk100, a new year: that is what extends the cube); "+" = a year after the cube's
@@ -216,10 +217,18 @@ def check_rivm(data: Path) -> dict:
                   "raster layers on data.rivm.nl (noise, heat, green, water storage, light)")
 
 
+def check_wind(data: Path) -> dict:
+    used = re.search(r'^LAYER = "([^"]+)"', (HERE / "prepare/wind.py").read_text(), re.M)[1]
+    names = re.findall(r"<Name>alo:(rivm_\d{8}_windturbines_vermogen)</Name>",
+                       get("https://data.rivm.nl/geo/alo/wfs?service=WFS&request=GetCapabilities"), re.I)
+    best = max(names + [used], key=lambda n: re.search(r"\d{8}", n)[0])
+    return result(used, best, [best] if best != used else [], "RIVM wind turbine snapshot (static layer)")
+
+
 CHECKS = {
     "cbs_vk100": check_cbs_vk100, "wijkbuurt": check_wijkbuurt, "leefbaarometer": check_leefbaarometer,
     "nbbg": check_nbbg, "brp": check_brp, "lgn": check_lgn, "tessera": check_tessera,
-    "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm,
+    "bag": check_bag, "3dbag": check_3dbag, "rivm": check_rivm, "wind": check_wind,
 }
 
 
