@@ -15,7 +15,8 @@ Two steps:
 
   knmi.py download [--years 2018-2025]   fetch the daily files to <data>/sources/knmi/<dataset>/ (shared by
                                          all regions; resumable, backs off on the API's rate limit). Uses
-                                         $KNMI_API_KEY, else KNMI's public anonymous key (shared quota).
+                                         $KNMI_API_KEY or ~/.config/knmi_api_key, else KNMI's public
+                                         anonymous key (shared quota, mostly rate-limited).
   knmi.py [--region zh]                  build <work>/layers/knmi.parquet
 
 Per hex and calendar year (value of the 1 km grid cell under the hex centre):
@@ -116,9 +117,13 @@ def list_files(name: str, version: int, key: str, years: list[int]) -> dict[str,
         q["nextPageToken"] = page["nextPageToken"]
 
 
+KEY_FILE = Path.home() / ".config/knmi_api_key"
+
+
 def download(data: Path, years: list[int]):
-    key = os.environ.get("KNMI_API_KEY") or ANON_KEY
-    log("key:", "KNMI_API_KEY" if os.environ.get("KNMI_API_KEY") else "public anonymous key (shared quota)")
+    own = os.environ.get("KNMI_API_KEY") or (KEY_FILE.read_text().strip() if KEY_FILE.exists() else None)
+    key = own or ANON_KEY
+    log("key:", "registered (KNMI_API_KEY or ~/.config/knmi_api_key)" if own else "public anonymous key (shared quota)")
     for var, (name, version) in DATASETS.items():
         dest = data / "sources/knmi" / name
         dest.mkdir(parents=True, exist_ok=True)
