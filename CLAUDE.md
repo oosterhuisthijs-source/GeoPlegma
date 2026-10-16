@@ -190,7 +190,9 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/out`: `uv run datacube-zh/release.py --region zh --notes "..."` freezes the assembled cube into
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`), checking consumer
 contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts releases;
-the game session bumps its pin. Never edit the game repos from here:
+the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
+`simcityzh-unity` (zh + nl); releases exist for both regions (`datacube_zh` 2026.10.16.2, `datacube_nl` 2026.10.16).
+Never edit the game repos from here:
 - `~/simzh-deckgl` — the user's deck.gl version of the SimCityZH game (own TS sim, lenses, 3D BAG). Not a
   git repo. `scripts/export_cells.py` converts the cube to `public/data/cells_<year>.json`; it reads the
   **copy** at `~/Downloads/SimCityZH v0.95/_custom_data/datacube/datacube_zh`, not `own_data/out` directly.
