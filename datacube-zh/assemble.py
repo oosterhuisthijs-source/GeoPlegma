@@ -200,6 +200,11 @@ KDW_SRC = ("RIVM Koppeltabel relevante habitats (editie 2026-10-06; AERIUS-hexag
            "RIVM historische reeks stikstofdepositie; prepare/kdw.py")
 VEE_SRC = ("CBS StatLine 80781ned (landbouwtelling per gemeente, dieren op 1 april, gemeente-indeling van dat jaar), "
            "verdeeld over de landbouwgrond (BRP) van de gemeente; prepare/vee.py")
+NH3_SRC = ("RIVM Emissieregistratie, ER Reeks 1990-2024 Definitief: ammoniak naar lucht per subsector, 1x1 km "
+           "(5x5 km op zee); alleen 2019-2024 regionaal verdeeld; prepare/nh3.py")
+NH3_SPLIT = "uitstoot van het 1 km-vierkant verdeeld over de hexagonen met hun centrum erin, naar oppervlak"
+NH3_ANIMAL = ("alle uitstoot uit de mest van deze diersoort: stal, opslag, beweiding en uitrijden op het land (dus "
+              "ook op velden ver van het bedrijf)")
 VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 MEASURE_INFO = {
@@ -215,6 +220,15 @@ MEASURE_INFO = {
     "knmi_neerslagtekort_max_mm": (KNMI_SRC, "mm", "grootste potentiele neerslagtekort van het groeiseizoen: "
                                    "cumulatief verdamping - neerslag vanaf 1 april, maximum tot 30 september (KNMI-"
                                    f"definitie, niet afgekapt op 0); {CELL_CENTRE}"),
+    "nh3_rundvee_kg": (NH3_SRC, "kg NH3/jaar", f"rundvee: {NH3_ANIMAL}; {NH3_SPLIT}"),
+    "nh3_varkens_kg": (NH3_SRC, "kg NH3/jaar", f"varkens: {NH3_ANIMAL}; {NH3_SPLIT}"),
+    "nh3_pluimvee_kg": (NH3_SRC, "kg NH3/jaar", f"pluimvee: {NH3_ANIMAL}; {NH3_SPLIT}"),
+    "nh3_overige_dieren_kg": (NH3_SRC, "kg NH3/jaar", "overige landbouwhuisdieren (schapen, geiten, paarden, "
+                              f"konijnen, pelsdieren): {NH3_ANIMAL}; {NH3_SPLIT}"),
+    "nh3_kunstmest_kg": (NH3_SRC, "kg NH3/jaar", f"kunstmest; {NH3_SPLIT}"),
+    "nh3_landbouw_kg": (NH3_SRC, "kg NH3/jaar", "hele sector landbouw (dieren, kunstmest, bodem en gewas, "
+                        f"particuliere landbouw, energie); {NH3_SPLIT}"),
+    "nh3_totaal_kg": (NH3_SRC, "kg NH3/jaar", f"alle sectoren (ook verkeer, consumenten, industrie); {NH3_SPLIT}"),
     "gdn_stikstof_mol_ha": (GDN_SRC, "mol N/ha/jaar", f"totale stikstofdepositie; {CELL_CENTRE}"),
     "gdn_verzuring_mol_ha": (GDN_SRC, "mol H+/ha/jaar", f"potentieel verzurende depositie; {CELL_CENTRE}"),
     "gcn_no2_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie NO2; {CELL_CENTRE}"),
@@ -252,6 +266,10 @@ MEASURE_WARNINGS = {
              "een cel toont een aannemelijke dichtheid, niet een echt bedrijf. Gemeentetotalen kloppen exact"),
     "kdw_overschr": ("depositie van het 1 km-grid op elk AERIUS-hexagon; RIVM rekent met depositie per hectare, dus "
                      "lokaal anders; landelijk 2024: 71,1% boven de KDW tegen 69,3% bij RIVM"),
+    "nh3_": ("model: landelijke emissies (dieraantallen x emissiefactoren, kunstmestverkoop) verdeeld over het land, "
+             "stallen op de bedrijfslocatie, uitrijden en beweiding over de landbouwgrond; RIVM berekent de "
+             "depositie (gdn_*) hieruit, dus niet onafhankelijk van gdn_* of vee_*. 2018 en 2025 leeg (niet regionaal "
+             "verdeeld)"),
     "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
                  "dus alleen een regionaal signaal"),
 }
@@ -297,8 +315,8 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 # Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
-# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py). Read once, filtered per year.
-YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee")
+# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py, nh3.py). Read once, filtered per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee", "nh3")
 _yearly_cache: dict = {}
 
 

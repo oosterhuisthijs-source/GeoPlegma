@@ -199,6 +199,14 @@ trend = "ok"
 note = "RIVM historical series (edition October 2026): 2005-2025 recalculated with one method, so differences between years are real model change, weather included (deposition follows rainfall and wind). Modelled (OPS) and calibrated on measurements, 1 km: compare with Natura 2000 (natura2000_id) for exceedance. Not the yearly GDN rounds, which RIVM says cannot be strung into a series."
 
 [[concept]]
+name = "Ammonia emissions (RIVM Emissieregistratie)"
+use = ["nh3_landbouw_kg", "nh3_rundvee_kg", "nh3_varkens_kg", "nh3_pluimvee_kg"]
+alternatives = ["nh3_overige_dieren_kg", "nh3_kunstmest_kg", "nh3_totaal_kg"]
+covers = ["nh3_*"]
+trend = "care"
+note = "kg NH3 per cell per year from the national emission register (NEMA: animal counts x emission factors), distributed per 1 km square: stables at the farm location, manure application and grazing over farmland. An animal column holds ALL emissions of that animal's manure (stable, storage, grazing, field application), so it also lands on fields away from the farm. Only 2019-2024 (2018 and 2025 not regionalised). Modelled, and the input of RIVM's deposition (gdn_*): not independent of gdn_* or vee_*. Sums: add cells up (res 8/7 are sums)."
+
+[[concept]]
 name = "Air quality (RIVM GCN, modelled)"
 use = ["gcn_no2_ug_m3", "gcn_pm25_ug_m3"]
 alternatives = ["gcn_pm10_ug_m3", "gcn_nh3_ug_m3"]

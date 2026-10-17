@@ -40,6 +40,13 @@ reference_period = "calendar year Y (historical series, one method for 2005-2025
 time = "yearly"
 
 [[rule]]
+columns = ["nh3_*"]
+tier = "modelled"
+native_resolution = "Emissieregistratie 1 km square (5 km at sea), split over hexes by area"
+reference_period = "calendar year Y (ER series 1990-2024 final; regionalised 2019-2024 only)"
+time = "yearly"
+
+[[rule]]
 columns = ["gcn_*"]
 tier = "modelled"
 native_resolution = "RIVM 1 km grid"

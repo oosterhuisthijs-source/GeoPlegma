@@ -126,6 +126,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre (coast: nearest cell with data) | done |
 | 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
 | 5n | livestock per cell (`vee_*`), yearly | CBS StatLine 80781ned per gemeente | `prepare/vee.py`: spread over BRP farmland | done |
+| 5o | ammonia emissions per cell (`nh3_*`), 2019-2024 | RIVM Emissieregistratie, ammoniak per subsector, 1x1 km | `prepare/nh3.py`: square split over its hexes by area | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -437,6 +438,21 @@ so zh == nl; gemeente totals are exact. `vee_bedrijven_*` = number of farms, spr
 not a farm: housed animals especially live in barns, not on the fields they are spread over.
 Zeros CBS uses for "not published" become null: a measure that is 0 in every gemeente in a year (horses 2022), and
 from 2024 a farm count of 0 in a gemeente that still has those animals (~20-130 gemeenten per farm column).
+
+## Ammonia emissions (`prepare/nh3.py`)
+
+RIVM's Emissieregistratie (dataset "ER Reeks 1990-2024 Definitief") publishes ammonia emissions per 1x1 km square
+(5x5 km at sea) per subsector; the export is the portal's own form, scripted in `nh3.py download` (one ~60 MB xlsx
+per year, 1-3 min each). Regionalised years are 2019-2024 only (before: 2015, 2010, ...; 2025 national only until
+early 2027), so 2018 and 2025 are null. Square codes are the lower-left corner in RD km (`014369_km1`; checked:
+cattle emissions per square follow `vee_rundvee` better with this than with the centre, Spearman 0.76 vs 0.65).
+Each square's emission is split over the hexes whose centre lies in it, by hex area, so sums are kept.
+
+The animal columns (`nh3_rundvee_kg`, `_varkens_`, `_pluimvee_`, `_overige_dieren_`) hold all emissions of that
+animal's manure: stable, storage, grazing and application on the field. Cattle 2024: 52.7 kt here against 30 kt for
+stable + storage only in CBS 83982NED. So they also land on fields away from the farm. `nh3_kunstmest_kg`
+(fertiliser), `nh3_landbouw_kg` (whole sector) and `nh3_totaal_kg` (all sectors) complete it. Tier modelled; RIVM's
+deposition (`gdn_*`) is calculated from these emissions and livestock counts are an input, so not independent.
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 
