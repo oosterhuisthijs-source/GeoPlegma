@@ -198,10 +198,11 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl) and `cube-analyst` (nl), whose contract files don't exist yet
 (asked them to write them). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.4, `datacube_nl` 2026.10.17.3
-(heating degree days `knmi_graaddagen`, CBS livestock zeros -> null, gas warning). Open requests, in order: NH3
-emissions (Emissieregistratie), CBS note for the 2019 gas step, wind (ERA5/stations), measured NH3 (MAN/LML),
-homes with a gas connection per square. Before: zh .17.3 / nl .17.2 (KNMI climate
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.5, `datacube_nl` 2026.10.17.4
+(NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted Emissieregistratie export). Open requests, in order:
+measured NH3 (MAN/LML), CBS note for the 2019 gas step, wind (ERA5/stations), homes with a gas connection per
+square; analyst contract file missing. Before: zh .17.4 / nl .17.3 (heating degree days `knmi_graaddagen`, CBS
+livestock zeros -> null, gas warning). Before: zh .17.3 / nl .17.2 (KNMI climate
 `knmi_*`, `prepare/knmi.py`). Before: zh .17.1 / nl .17.1 (livestock `vee_*`,
 `prepare/vee.py`: CBS census per gemeente spread over BRP farmland). Before: zh .16.14 /
 nl .16.12 (KDW per Natura 2000 habitat + yearly exceedance, `prepare/kdw.py`; LIWO flood junk fixed via `valid_max`). Before: zh .13 / nl .11 (machine-readable known
