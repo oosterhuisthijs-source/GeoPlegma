@@ -196,16 +196,16 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.17.1, `datacube_nl` 2026.10.17.1 (livestock `vee_*`, `prepare/vee.py`: CBS
-census per gemeente spread over BRP farmland; label one day ahead of the real date, harmless). Before: zh .16.14 /
+`simcityzh-unity` (zh + nl). Current releases: `datacube_zh` 2026.10.17.3, `datacube_nl` 2026.10.17.2 (KNMI climate
+`knmi_*`, `prepare/knmi.py`; announced in both handoff files). Before: zh .17.1 / nl .17.1 (livestock `vee_*`,
+`prepare/vee.py`: CBS census per gemeente spread over BRP farmland). Before: zh .16.14 /
 nl .16.12 (KDW per Natura 2000 habitat + yearly exceedance, `prepare/kdw.py`; LIWO flood junk fixed via `valid_max`). Before: zh .13 / nl .11 (machine-readable known
 breaks, `[[break]]` in `config/guide.toml` -> `availability.parquet` `breaks`/`break_note` + GUIDE.md table). Before
 that, zh .12 / nl .10 added provenance per column (
 `config/provenance.toml` -> `tier`/`native_resolution`/`reference_period`/`time` + `availability.parquet`; yearly RIVM
 deposition + GCN air quality (`prepare/rivm.py`) and TROPOMI NO2 (`prepare/tropomi.py`). Before: static OSM grid/solar/
 marinas, NDW charging, OSM motorways/railways with a whole-line `datacube_<region>_lijnen.parquet`; zh .9 has a wrong
-`crs: null` in that line file, skip it). KNMI climate (`prepare/knmi.py`) is written but its daily grids are still
-downloading (`knmi.py download`, resumable, needs a registered `KNMI_API_KEY` to be fast); next release adds `knmi_*`. Talk to
+`crs: null` in that line file, skip it). Talk to
 the game sessions through `own_data/releases/handoff/GAME_SESSION.md` (append a section per release).
 
 Full rebuild order per region: prepare steps (README) -> `assemble.py` -> `coarsen.py` -> `release.py` (refuses
@@ -229,9 +229,11 @@ Never edit the game repos from here:
   downloads them, then runs `prepare/s2_metrics.py` once -> `work_nl/layers/s2.parquet`. Log:
   `own_data/sources/s2_ndvi/watch.log`. It does NOT release. Next: validate (sealed share vs 3D BAG/NBBG, new
   sealing vs new BAG addresses, 2018/2022 anomaly vs KNMI deficit, green share vs groenklasse), wire `s2` into
-  assemble (YEARLY_FILES), provenance/guide/coarsen, then release together with KNMI.
-- `datacube-knmi-download.service`: KNMI daily grids (log `own_data/sources/knmi/download.log`); then
-  `prepare/knmi.py --region nl`.
+  assemble (YEARLY_FILES), provenance/guide/coarsen, then release. Status 2026-10-17 15:00: 2018-2020 downloaded,
+  2021 running, rest queued; the som-scenario project hit Earth Engine's noncommercial quota ("restricted mode"),
+  so the rest may be slow. The NL assemble already peaks at ~12.4 GB under the 12 GB cap: raise the cap a bit
+  or trim assemble memory before adding `s2`.
+- KNMI: download complete (2018-2025, all 5 variables), released in zh .17.3 / nl .17.2.
 - Earth Engine auth = gcloud Application Default Credentials (quota project som-scenario); the old
   `~/.config/earthengine/credentials` (expired token) was moved to `credentials.old`.
 - Hex index raster (geoplegma, `datacube-zh --region nl hexindex`): `work_nl/s2/hexindex_10m.u32` (3.9 GB).
