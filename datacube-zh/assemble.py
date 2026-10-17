@@ -204,6 +204,8 @@ VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 MEASURE_INFO = {
     "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {KNMI_CELL}"),
+    "knmi_graaddagen": (KNMI_SRC, "graaddagen", "graaddagen onder 18 graden C: som over de dagen van max(0, 18 - "
+                        f"daggemiddelde temperatuur), ongewogen; {KNMI_CELL}"),
     "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {KNMI_CELL}"),
     "knmi_tropische_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 30 graden C; {KNMI_CELL}"),
     "knmi_vorstdagen": (KNMI_SRC, "dagen", f"dagen met minimumtemperatuur < 0 graden C; {KNMI_CELL}"),
@@ -566,6 +568,12 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                                 "laadpunten en zonneparken zijn sinds 2018 sterk gegroeid")
         elif name.startswith(tuple(MEASURE_WARNINGS)):
             entry["warning"] = next(w for k, w in MEASURE_WARNINGS.items() if name.startswith(k))
+        elif "gasverbruik" in name or "elektriciteitsverbruik" in name:
+            entry["warning"] = ("gemiddelde over de woningen met een aansluiting, uit het standaardjaarverbruik (SJV) van de "
+                                "netbeheerders, door CBS omgerekend naar het weer van het jaar: besparing kan maanden "
+                                "achterlopen. In cellen met nieuwbouw tellen woningen die halverwege het jaar zijn "
+                                "opgeleverd met een deel van een jaar mee, dus verandering per periode is daar vertekend; "
+                                "gebruik voor trends cellen met een stabiel aantal woningen. 2025 niet gepubliceerd")
         elif name.endswith("_share_dc"):
             entry["warning"] = "corrigeert voor ruis per jaarpaar, maar haalt daarmee ook echte provinciebrede verandering weg"
         rule = provenance_rule(rules, name)

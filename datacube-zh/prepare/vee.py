@@ -62,6 +62,11 @@ MEASURES = {
     "vee_bedrijven_varkens": (["VarkensTotaal_136"], "housed"),
     "vee_bedrijven_kippen": (["KippenTotaal_140"], "housed"),
 }
+# farm counts and the animals they count (a 0 next to animals > 0 is a missing value, not no farms)
+FARM_ANIMALS = {"vee_bedrijven_graasdieren": ["vee_rundvee", "vee_schapen", "vee_geiten", "vee_paarden"],
+                "vee_bedrijven_rundvee": ["vee_rundvee"],
+                "vee_bedrijven_hokdieren": ["vee_varkens", "vee_kippen", "vee_overig_pluimvee"],
+                "vee_bedrijven_varkens": ["vee_varkens"], "vee_bedrijven_kippen": ["vee_kippen"]}
 GRAZE = ["brp_grasland_fraction", "brp_natuurlijk_grasland_fraction", "brp_mais_fraction", "brp_voedergewassen_fraction"]
 
 
@@ -151,6 +156,25 @@ def main():
             frac[c][bpos] = np.nan_to_num(np.array(brp[c], dtype=float))
         weights = {"graze": area * sum(frac[c] for c in GRAZE), "housed": area * frac["brp_coverage"]}
         inside = gm >= 0
+        count, known = {}, {}
+        for col, (keys, _) in MEASURES.items():
+            count[col], known[col] = np.zeros(len(codes)), np.zeros(len(codes), bool)
+            for g, code in enumerate(codes):
+                r = cbs.get((code, yr))
+                v = [r.get(k) for k in keys] if r else [None]
+                if r and any(x is not None for x in v):
+                    count[col][g], known[col][g] = sum(x or 0 for x in v), True
+        for col in MEASURES:
+            # CBS publishes 0 instead of "no data" for a whole year (horses 2022): unknown, not none
+            if known[col].any() and count[col][known[col]].sum() == 0:
+                known[col][:] = False
+                log(f"  {yr}: {col} is 0 everywhere, set to null")
+        for col, animals in FARM_ANIMALS.items():
+            # from 2024 CBS's farm count per animal is 0 in gemeenten that still have those animals: unknown
+            bad = known[col] & (count[col] == 0) & (sum(count[a] for a in animals) > 0)
+            known[col] &= ~bad
+            if bad.any():
+                log(f"  {yr}: {col} 0 with animals present in {bad.sum()} gemeenten, set to null")
         totals = {}
         for col, (keys, wkind) in MEASURES.items():
             w = weights[wkind]
@@ -158,19 +182,13 @@ def main():
             asum = np.bincount(gm[inside], area[inside], len(codes))
             vals = np.full(n, np.nan)
             vals[inside] = 0.0
-            count = np.zeros(len(codes))
-            known = np.zeros(len(codes), bool)
-            for g, code in enumerate(codes):
-                r = cbs.get((code, yr))
-                v = [r.get(k) for k in keys] if r else [None]
-                if r and any(x is not None for x in v):
-                    count[g], known[g] = sum(x or 0 for x in v), True
+            count_c, known_c = count[col], known[col]
             gi = gm[inside]
             use_area = wsum[gi] <= 0
             share = np.where(use_area, area[inside] / np.maximum(asum[gi], 1), w[inside] / np.maximum(wsum[gi], 1e-9))
-            vals[inside] = np.where(known[gi], count[gi] * share, np.nan)
+            vals[inside] = np.where(known_c[gi], count_c[gi] * share, np.nan)
             out[col].append(vals[sel])
-            totals[col] = count[known].sum()
+            totals[col] = count_c[known_c].sum()
         missing = [c for g, c in enumerate(codes) if (c, yr) not in cbs]
         empty = [c for g, c in enumerate(codes) if not (gm == g).any() and cbs.get((c, yr), {}).get("RundveeTotaal_84")]
         if empty:

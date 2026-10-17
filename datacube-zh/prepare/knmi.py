@@ -22,6 +22,7 @@ Two steps:
 Per hex and calendar year (value of the 1 km grid cell under the hex centre; a centre on a cell without data,
 along the coast, takes the nearest cell with data within 3 km):
   knmi_temp_gem_c             mean daily mean temperature (°C)
+  knmi_graaddagen             heating degree days: sum over the days of max(0, 18 °C - daily mean), unweighted
   knmi_zomerse_dagen          days with maximum >= 25 °C
   knmi_tropische_dagen        days with maximum >= 30 °C
   knmi_vorstdagen             days with minimum < 0 °C
@@ -65,10 +66,10 @@ ANON_KEY = ("eyJvcmciOiI1ZTU1NGUxOTI3NGE5NjAwMDEyYTNlYjEiLCJpZCI6IjUzYTg1ZDBhMmQ
             "Im11cm11cjEyOCJ9")
 DATASETS = {"tg": ("Tg1", 5), "tx": ("Tx1", 2), "tn": ("Tn1", 2), "rd": ("Rd1", 5), "ev": ("EV24", 2)}
 FNAME = re.compile(r"_L3__(\d{8})T\d{6}_\d{8}T\d{6}_(\d{4})\.nc$")
-COLUMNS = ["knmi_temp_gem_c", "knmi_zomerse_dagen", "knmi_tropische_dagen", "knmi_vorstdagen", "knmi_neerslag_mm",
+COLUMNS = ["knmi_temp_gem_c", "knmi_graaddagen", "knmi_zomerse_dagen", "knmi_tropische_dagen", "knmi_vorstdagen", "knmi_neerslag_mm",
            "knmi_zware_neerslag_dagen", "knmi_verdamping_mm", "knmi_neerslagtekort_max_mm"]
 # daily variables each indicator is computed from (a grid cell without data in any of them has no value)
-SOURCES = {"knmi_temp_gem_c": ["tg"], "knmi_zomerse_dagen": ["tx"], "knmi_tropische_dagen": ["tx"],
+SOURCES = {"knmi_temp_gem_c": ["tg"], "knmi_graaddagen": ["tg"], "knmi_zomerse_dagen": ["tx"], "knmi_tropische_dagen": ["tx"],
            "knmi_vorstdagen": ["tn"], "knmi_neerslag_mm": ["rd"], "knmi_zware_neerslag_dagen": ["rd"],
            "knmi_verdamping_mm": ["ev"], "knmi_neerslagtekort_max_mm": ["ev", "rd"]}
 
@@ -226,6 +227,7 @@ def main():
             with warnings.catch_warnings():  # cells without data (sea) are all-NaN
                 warnings.simplefilter("ignore", RuntimeWarning)
                 grids["knmi_temp_gem_c"] = np.nanmean(st["tg"], axis=0)
+            grids["knmi_graaddagen"] = np.nansum(np.maximum(18 - st["tg"], 0), axis=0)
         if st["tx"] is not None:
             grids["knmi_zomerse_dagen"] = (st["tx"] >= 25).sum(axis=0).astype(np.float32)
             grids["knmi_tropische_dagen"] = (st["tx"] >= 30).sum(axis=0).astype(np.float32)

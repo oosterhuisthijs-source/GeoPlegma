@@ -185,7 +185,7 @@ note = "NDW register of public charging points (all operators), one snapshot rep
 [[concept]]
 name = "Climate per year (KNMI)"
 use = ["knmi_temp_gem_c", "knmi_neerslag_mm", "knmi_neerslagtekort_max_mm", "knmi_tropische_dagen"]
-alternatives = ["knmi_zomerse_dagen", "knmi_vorstdagen", "knmi_zware_neerslag_dagen", "knmi_verdamping_mm"]
+alternatives = ["knmi_graaddagen", "knmi_zomerse_dagen", "knmi_vorstdagen", "knmi_zware_neerslag_dagen", "knmi_verdamping_mm"]
 covers = ["knmi_*"]
 trend = "ok"
 note = "KNMI daily 1 km grids interpolated from station measurements, summed or averaged per calendar year: year-to-year differences are the weather (2018 and 2022 were dry summers; check knmi_neerslagtekort_max_mm). The grid is smooth between stations (temperature from ~35, precipitation from ~300, evaporation from ~32 stations), so local detail below a few km is interpolation, not measurement. Precipitation deficit: KNMI definition, cumulative evaporation minus precipitation from 1 April, maximum up to 30 September; negative in a wet summer."
@@ -334,10 +334,10 @@ note = "CBS agricultural census (table 80781ned, animals on 1 April) per gemeent
 columns = ["vee_paarden"]
 years = [2022, 2023]
 kind = "coverage"
-note = "CBS published no horse/pony counts for 2022 (empty in that year)."
+note = "CBS published no horse/pony counts for 2022 (its table has 0 in every gemeente; null in the cube)."
 
 [[break]]
-columns = ["vee_bedrijven_kippen", "vee_bedrijven_varkens", "vee_bedrijven_rundvee"]
+columns = ["vee_bedrijven_kippen", "vee_bedrijven_varkens", "vee_bedrijven_rundvee", "vee_bedrijven_graasdieren", "vee_bedrijven_hokdieren"]
 years = [2024]
 kind = "definition"
-note = "From 2024 CBS reports 0 farms in >100 gemeenten that still report pigs or chickens (30 for cattle): per-animal farm counts are not comparable from 2024; the animal counts are."
+note = "From 2024 CBS reports 0 farms in >100 gemeenten that still report pigs or chickens (~30 for cattle, ~20 for grazing animals): those gemeenten are null in the cube, so national farm totals from 2024 are too low and not comparable; the animal counts are."

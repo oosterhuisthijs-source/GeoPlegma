@@ -390,7 +390,8 @@ The first layers that are measurements or physical models rather than registers 
 much coarser than a hex (1 km, TROPOMI ~14 x 9 km), so each hex takes the value of the grid cell under its centre;
 neighbouring hexes share a value. `native_resolution` in the `.columns.json` says so.
 
-- `knmi_*`: per calendar year from KNMI's daily grids: mean temperature, summer (>= 25 °C), tropical (>= 30 °C) and
+- `knmi_*`: per calendar year from KNMI's daily grids: mean temperature, heating degree days (< 18 °C, unweighted),
+  summer (>= 25 °C), tropical (>= 30 °C) and
   frost days, precipitation total and days >= 20 mm, Makkink evaporation, and the largest potential precipitation
   deficit of the growing season (KNMI definition: cumulative evaporation - precipitation from 1 April, maximum up to
   30 September). The daily files (~14,600 for 2018-2025, ~30 GB) come through the KNMI Open Data API, which allows
@@ -434,6 +435,8 @@ animals but no BRP land spread over their whole area. Hexes go to the gemeente o
 so zh == nl; gemeente totals are exact. `vee_bedrijven_*` = number of farms, spread the same way. NL cattle
 3.92 M (2018) -> 3.64 M (2025), pigs 12.4 M -> 9.8 M, chickens 105 M -> 88 M. A cell value is a plausible density,
 not a farm: housed animals especially live in barns, not on the fields they are spread over.
+Zeros CBS uses for "not published" become null: a measure that is 0 in every gemeente in a year (horses 2022), and
+from 2024 a farm count of 0 in a gemeente that still has those animals (~20-130 gemeenten per farm column).
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 

@@ -28,3 +28,16 @@ contract = "~/simzh-unity/datapack/cube_contract.json"
 
 [nl.simcityzh-unity]
 contract = "~/simzh-unity/datapack/cube_contract_nl.json"
+
+# --- cube-sim: backcast-calibrated simulation (~/cube-sim, own session; talks via handoff/SIM_SESSION.md) -----
+
+[zh.cube-sim]
+contract = "~/cube-sim/cube_contract.json"
+
+[nl.cube-sim]
+contract = "~/cube-sim/cube_contract_nl.json"
+
+# --- cube-analyst: LLM analyst agents (~/cube-analyst, own session; talks via handoff/ANALYST_SESSION.md) ------
+
+[nl.cube-analyst]
+contract = "~/cube-analyst/cube_contract_nl.json"

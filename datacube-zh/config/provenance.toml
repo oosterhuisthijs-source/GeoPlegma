@@ -93,7 +93,7 @@ time = "yearly"
 columns = ["gemiddeld_*verbruik*"]
 tier = "register"
 native_resolution = "CBS 100 m square"
-reference_period = "consumption in Y (checked against KNMI heating degree days: warm 2020 low, cold 2021 high)"
+reference_period = "SJV (grid operators: normal-weather annual use from two meter readings ~a year apart, mostly over Y-1) converted by CBS to the actual weather of Y: the weather is that of Y (checked against heating degree days: warm 2020 low, cold 2021 high), savings and insulation can lag by months"
 time = "yearly"
 
 [[rule]]
