@@ -10,7 +10,11 @@ n_piek, n_zomer, NDVI x 10000, nodata -32768) and the hex index raster of the sa
 summed per hex, so a hex value is a share of its 10 m pixels, not an average of mixed land covers.
 
 Per pixel:
-  water       piek < 0 in at least 75% of the years with data: excluded from all land metrics
+  water       LGN water (classes 16 zoet, 17 zout water; >= 2 of the 4 LGN 5 m pixels) in at least half of the LGN
+              years 2018-2025 (static mask, cached as <work>/s2/watermask_10m.u8), OR piek < 0 in at least 75% of
+              the years with data (the only rule east of LGN's 280 km edge): excluded from all land metrics.
+              NDVI alone misses turbid water, Wadden mud flats and lakes (peak just above 0), which otherwise count
+              as "niet groen" land
   niet groen  piek < 0.30 that year: never green in April-October (buildings, roads, greenhouses, bare sand)
   groen       piek >= 0.60 that year: dense vegetation at some point in the season
   verstening  green (piek >= 0.50) the year before, niet groen this year AND the next: new, lasting loss of green
@@ -33,6 +37,7 @@ import json
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -64,6 +69,41 @@ def vrt_for(src: Path, year: int) -> Path | None:
     return vrt
 
 
+def water_mask(data: Path, work: Path, rows_total: int, cols: int, x0: float, y0: float) -> np.memmap:
+    """10 m water mask from the LGN 5 m rasters on the hex index grid: 1 water, 0 land, 255 outside LGN."""
+    f = work / "s2/watermask_10m.u8"
+    if f.exists():
+        return np.memmap(f, dtype="u1", mode="r", shape=(rows_total, cols))
+    lgn_cfg = tomllib.loads((Path(__file__).resolve().parent.parent / "config/lgn.toml").read_text())
+    codes = lgn_cfg["groups"]["water"]
+    tifs = sorted((data / "lgn/tif").glob("LGN20[12][0-9].tif"))
+    tifs = [t for t in tifs if 2018 <= int(t.stem[3:]) <= 2025]
+    log(f"building water mask from {', '.join(t.stem for t in tifs)}")
+    srcs = [rasterio.open(t) for t in tifs]
+    for d in srcs:
+        t = d.transform
+        assert (round(t.a), round(t.e)) == (5, -5) and (t.c - x0) % 10 == 0 and (y0 - t.f) % 10 == 0, (d.name, t)
+    tmp = f.with_suffix(".tmp")
+    out = np.memmap(tmp, dtype="u1", mode="w+", shape=(rows_total, cols))
+    for r0 in range(0, rows_total, BLOCK):
+        h = min(BLOCK, rows_total - r0)
+        votes, seen = np.zeros((h, cols), np.int16), np.zeros((h, cols), np.int16)
+        for d in srcs:
+            # the LGN window covering these 10 m rows/cols (2 x 2 LGN pixels per 10 m pixel)
+            c_off, r_off = int((x0 - d.transform.c) / 5), int((d.transform.f - y0) / 5) + 2 * r0
+            a = d.read(1, window=Window(c_off, r_off, 2 * cols, 2 * h), boundless=True, fill_value=0)
+            wet = np.isin(a, codes).reshape(h, 2, cols, 2).sum(axis=(1, 3)) >= 2
+            known = (a != 0).reshape(h, 2, cols, 2).any(axis=(1, 3))
+            votes += wet & known
+            seen += known
+        out[r0:r0 + h] = np.where(seen == 0, 255, (2 * votes >= seen) & (votes > 0)).astype("u1")
+    out.flush()
+    del out
+    tmp.rename(f)
+    log(f"-> {f}")
+    return np.memmap(f, dtype="u1", mode="r", shape=(rows_total, cols))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default="own_data")
@@ -79,6 +119,7 @@ def main():
     row0 = args.row0
     rows = min(args.rows or rows_total - row0, rows_total - row0)
     hexidx = np.memmap(work / "s2/hexindex_10m.u32", dtype="<u4", mode="r", shape=(rows_total, cols))
+    lgnwater = water_mask(data, work, rows_total, cols, meta["x0"], meta["y0"])
     ids = pq.read_table(work / "grid.parquet", columns=["h3_id"])["h3_id"].to_pylist()
     n = len(ids) + 1  # index 0 = no hex
 
@@ -106,7 +147,8 @@ def main():
         has = piek != NODATA
         zhas = zomer != NODATA
         nvalid = has.sum(axis=0)
-        water = (nvalid > 0) & ((has & (piek < 0)).sum(axis=0) >= np.ceil(0.75 * np.maximum(nvalid, 1)))
+        ndvi_water = (nvalid > 0) & ((has & (piek < 0)).sum(axis=0) >= np.ceil(0.75 * np.maximum(nvalid, 1)))
+        water = (np.asarray(lgnwater[r0:r0 + h]).ravel() == 1) | ndvi_water
         pixels += np.bincount(idx, minlength=n)
         water_px += np.bincount(idx, water, minlength=n)
         land = has & ~water
@@ -130,8 +172,9 @@ def main():
             an = zl & np.isfinite(base)
             add("anom", np.where(an, zomer[k] - np.nan_to_num(base), 0) / 10000)
             add("anom_n", an)
-            add("n_piek", np.where(has[k], stack[y][2], 0))
-            add("n_zomer", np.where(has[k], stack[y][3], 0))
+            # counts are nodata (-32768) where a composite had no clear observation: that is 0, not -32768
+            add("n_piek", np.where(has[k] & (stack[y][2] >= 0), stack[y][2], 0))
+            add("n_zomer", np.where(has[k] & (stack[y][3] >= 0), stack[y][3], 0))
             if 0 < k < ny - 1 and years[k - 1] == years[k] - 1 and years[k + 1] == years[k] + 1:
                 basis = land[k] & has[k - 1] & has[k + 1]
                 add("wissel_basis", basis)
