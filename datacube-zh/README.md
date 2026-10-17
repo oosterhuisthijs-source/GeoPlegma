@@ -127,6 +127,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
 | 5n | livestock per cell (`vee_*`), yearly | CBS StatLine 80781ned per gemeente | `prepare/vee.py`: spread over BRP farmland | done |
 | 5o | ammonia emissions per cell (`nh3_*`), 2019-2024 | RIVM Emissieregistratie, ammoniak per subsector, 1x1 km | `prepare/nh3.py`: square split over its hexes by area | done |
+| 5p | measured ammonia (`man_*`), yearly | RIVM Meetnet Ammoniak Nederland (man.rivm.nl) | `prepare/man.py`: area mean over the area polygon, extra points in their own cell | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -453,6 +454,16 @@ animal's manure: stable, storage, grazing and application on the field. Cattle 2
 stable + storage only in CBS 83982NED. So they also land on fields away from the farm. `nh3_kunstmest_kg`
 (fertiliser), `nh3_landbouw_kg` (whole sector) and `nh3_totaal_kg` (all sectors) complete it. Tier modelled; RIVM's
 deposition (`gdn_*`) is calculated from these emissions and livestock counts are an input, so not independent.
+
+## Measured ammonia (`prepare/man.py`)
+
+RIVM's Meetnet Ammoniak Nederland (until 2026 "in Natuurgebieden") measures monthly ammonia with passive samplers in
+~100 nature areas (1-15 points each) and, since 2021, at 17 points outside them. man.rivm.nl offers one csv with
+the yearly mean per point (2005-2025, no coordinates) and the area polygons + extra point coordinates as the site's
+own geojson. Per hex: inside an area, the mean of its points that year; the cell of an extra point, that point.
+The Veluwe cross-section points have no location and are skipped. Validation: per area and year, `man_nh3_ug_m3`
+vs `gcn_nh3_ug_m3` r 0.83-0.94 (2018-2025), mean levels within 0.4 ug/m3 (GCN is calibrated on MAN, so this checks
+the placement, not the model).
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 

@@ -205,6 +205,8 @@ NH3_SRC = ("RIVM Emissieregistratie, ER Reeks 1990-2024 Definitief: ammoniak naa
 NH3_SPLIT = "uitstoot van het 1 km-vierkant verdeeld over de hexagonen met hun centrum erin, naar oppervlak"
 NH3_ANIMAL = ("alle uitstoot uit de mest van deze diersoort: stal, opslag, beweiding en uitrijden op het land (dus "
               "ook op velden ver van het bedrijf)")
+MAN_SRC = ("RIVM Meetnet Ammoniak Nederland (man.rivm.nl): jaargemiddelde per meetpunt (passieve samplers), "
+           "~100 natuurgebieden + 17 punten daarbuiten sinds 2021; prepare/man.py")
 VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 MEASURE_INFO = {
@@ -229,6 +231,11 @@ MEASURE_INFO = {
     "nh3_landbouw_kg": (NH3_SRC, "kg NH3/jaar", "hele sector landbouw (dieren, kunstmest, bodem en gewas, "
                         f"particuliere landbouw, energie); {NH3_SPLIT}"),
     "nh3_totaal_kg": (NH3_SRC, "kg NH3/jaar", f"alle sectoren (ook verkeer, consumenten, industrie); {NH3_SPLIT}"),
+    "man_nh3_ug_m3": (MAN_SRC, "ug/m3", "gemeten jaargemiddelde ammoniakconcentratie: in een MAN-gebied het "
+                      "gemiddelde van de meetpunten van dat gebied (over het hele gebied), in de cel van een los "
+                      "meetpunt dat punt; leeg buiten de gebieden"),
+    "man_meetpunten": (MAN_SRC, "aantal", "aantal meetpunten achter de waarde in dat jaar"),
+    "man_gebied": (MAN_SRC, "naam", "MAN-gebied (Natura 2000-gebied of los meetpunt) waarin het celcentrum ligt"),
     "gdn_stikstof_mol_ha": (GDN_SRC, "mol N/ha/jaar", f"totale stikstofdepositie; {CELL_CENTRE}"),
     "gdn_verzuring_mol_ha": (GDN_SRC, "mol H+/ha/jaar", f"potentieel verzurende depositie; {CELL_CENTRE}"),
     "gcn_no2_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie NO2; {CELL_CENTRE}"),
@@ -270,6 +277,9 @@ MEASURE_WARNINGS = {
              "stallen op de bedrijfslocatie, uitrijden en beweiding over de landbouwgrond; RIVM berekent de "
              "depositie (gdn_*) hieruit, dus niet onafhankelijk van gdn_* of vee_*. 2018 en 2025 leeg (niet regionaal "
              "verdeeld)"),
+    "man_nh3": ("meting, maar weinig punten: een gebiedswaarde is het gemiddelde van 1-15 punten, toegekend aan het "
+                "hele gebied; de punten staan waar RIVM meet (vaak aan de rand naar landbouwgrond). Vergelijk met "
+                "gcn_nh3_ug_m3 (model, gekalibreerd op deze metingen)"),
     "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
                  "dus alleen een regionaal signaal"),
 }
@@ -315,8 +325,8 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 # Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
-# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py, nh3.py). Read once, filtered per year.
-YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee", "nh3")
+# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py, nh3.py, man.py). Read once, filtered per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee", "nh3", "man")
 _yearly_cache: dict = {}
 
 

@@ -47,6 +47,20 @@ reference_period = "calendar year Y (ER series 1990-2024 final; regionalised 201
 time = "yearly"
 
 [[rule]]
+columns = ["man_meetpunten", "man_gebied"]
+tier = "meta"
+native_resolution = "MAN area (Natura 2000 area) or measuring point"
+reference_period = "calendar year Y"
+time = "yearly"
+
+[[rule]]
+columns = ["man_*"]
+tier = "measured"
+native_resolution = "MAN area mean of 1-15 passive samplers, or one point"
+reference_period = "calendar year Y (monthly samplers)"
+time = "yearly"
+
+[[rule]]
 columns = ["gcn_*"]
 tier = "modelled"
 native_resolution = "RIVM 1 km grid"

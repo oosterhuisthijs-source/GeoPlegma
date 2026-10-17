@@ -94,6 +94,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return "min", None
     if name in ("kdw_gewogen_mol_ha", "kdw_overschreden_aandeel", "kdw_overschrijding_mol_ha"):
         return "wmean", "kdw_habitat_m2"
+    if name == "man_meetpunten":
+        return "max", None
     if name == "tropomi_no2_maanden":
         return "min", None  # months the yearly mean rests on: the weakest child counts
     if name.startswith("osm_") and name.endswith("_lengte_m"):

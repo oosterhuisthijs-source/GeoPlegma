@@ -207,6 +207,14 @@ trend = "care"
 note = "kg NH3 per cell per year from the national emission register (NEMA: animal counts x emission factors), distributed per 1 km square: stables at the farm location, manure application and grazing over farmland. An animal column holds ALL emissions of that animal's manure (stable, storage, grazing, field application), so it also lands on fields away from the farm. Only 2019-2024 (2018 and 2025 not regionalised). Modelled, and the input of RIVM's deposition (gdn_*): not independent of gdn_* or vee_*. Sums: add cells up (res 8/7 are sums)."
 
 [[concept]]
+name = "Ammonia measured (RIVM MAN)"
+use = ["man_nh3_ug_m3"]
+alternatives = ["man_meetpunten", "man_gebied"]
+covers = ["man_*"]
+trend = "ok"
+note = "Measured yearly mean ammonia concentration from RIVM's Meetnet Ammoniak Nederland (passive samplers): per nature area the mean of its 1-15 points, spread over the whole area; since 2021 also 17 points outside nature (cities, farmland), each in its own cell. Only ~40,000 cells (inside MAN areas) have a value. The one measured counterpart of gcn_nh3_ug_m3 (modelled, calibrated on MAN and LML: per area r 0.83-0.94) and nh3_* (modelled emissions). Year-to-year steps are mostly weather (dry 2018 and 2025 high, wet 2023 low) and areas joining the network (84 areas in 2018, 113 in 2025): compare an area with itself."
+
+[[concept]]
 name = "Air quality (RIVM GCN, modelled)"
 use = ["gcn_no2_ug_m3", "gcn_pm25_ug_m3"]
 alternatives = ["gcn_pm10_ug_m3", "gcn_nh3_ug_m3"]
@@ -349,3 +357,9 @@ columns = ["vee_bedrijven_kippen", "vee_bedrijven_varkens", "vee_bedrijven_rundv
 years = [2024]
 kind = "definition"
 note = "From 2024 CBS reports 0 farms in >100 gemeenten that still report pigs or chickens (~30 for cattle, ~20 for grazing animals): those gemeenten are null in the cube, so national farm totals from 2024 are too low and not comparable; the animal counts are."
+
+[[break]]
+columns = ["gemiddeld_gasverbruik_woning_area_weighted_average", "wb_gemiddeld_gasverbruik"]
+years = [2019]
+kind = "method"
+note = "SUSPECTED, not confirmed by CBS: gas per home falls ~7% from 2018 to 2019 (CBS 81528NED national 1,270 -> 1,180 m3; the cube's stable-stock cells -6.9%) with the same heating degree days (knmi_graaddagen 2,660 both years), while CBS's energy balance (83989NED, homes) falls only 3.5%. CBS renewed its customer-file method with series starting in 2019 (publication 'Energielevering aardgaswoningen 2019-2021 (vernieuwd)', 2022) and 81528NED lacks the district-heating share for 2018 alone. Don't read 2018 -> 2019 as savings."
