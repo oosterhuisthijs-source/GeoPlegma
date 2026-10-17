@@ -128,6 +128,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5n | livestock per cell (`vee_*`), yearly | CBS StatLine 80781ned per gemeente | `prepare/vee.py`: spread over BRP farmland | done |
 | 5o | ammonia emissions per cell (`nh3_*`), 2019-2024 | RIVM Emissieregistratie, ammoniak per subsector, 1x1 km | `prepare/nh3.py`: square split over its hexes by area | done |
 | 5p | measured ammonia (`man_*`), yearly | RIVM Meetnet Ammoniak Nederland (man.rivm.nl) | `prepare/man.py`: area mean over the area polygon, extra points in their own cell | done |
+| 5q | national wind per year (`datacube_<region>_jaar.parquet`, not per cell) | KNMI daily station data FG/FHX/DDVEC | `prepare/knmi_wind.py`: fixed station set, yearly means, direction shares, calm/storm days | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -464,6 +465,16 @@ own geojson. Per hex: inside an area, the mean of its points that year; the cell
 The Veluwe cross-section points have no location and are skipped. Validation: per area and year, `man_nh3_ug_m3`
 vs `gcn_nh3_ug_m3` r 0.83-0.94 (2018-2025), mean levels within 0.4 ug/m3 (GCN is calibrated on MAN, so this checks
 the placement, not the model).
+
+## National wind per year (`prepare/knmi_wind.py`)
+
+Wind per cell per year says little: the pattern between places is the same every year and what changes between
+years is one national signal. So wind is a separate table of 8 rows, `datacube_<region>_jaar.parquet` (`year_int` +
+`wind_*`), shipped with every release (same file for zh and nl). From KNMI's daily station data, only the stations
+complete (>= 95% of days) in every year 2018-2025 (39 of 48, coast and IJsselmeer included), so station changes don't
+make fake jumps: mean speed, share of station-days per 45-degree direction sector (`wind_zw_w_aandeel`,
+`wind_o_no_aandeel`), calm days (station mean < 2 m/s) and storm days (hourly mean >= 20.8 m/s, Beaufort 9, at one or
+more stations). An upwind-emission index per cell is not built: only if a consumer finds a signal worth refining.
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 

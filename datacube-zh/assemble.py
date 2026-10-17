@@ -14,6 +14,8 @@ Writes, under the region's out directory (config/regions.toml):
 - datacube_<region>.columns.json   per-column manifest
 - datacube_<region>_lijnen.parquet  OSM motorways/railways as whole lines (GeoParquet, prepare/osm.py),
                                when prepared; the cube carries their lengths per cell (osm_*_lengte_m)
+- datacube_<region>_jaar.parquet   national values per year, not per cell (prepare/knmi_wind.py: wind),
+                               when prepared; same file for every region
 - volledige_tijdreeks_delta/   (zh only) drop-in replacement for ruimtelijke-assistent:
                                the original's exact columns, order and types,
                                CBS columns min-max scaled to 0-255 over all years
@@ -726,6 +728,9 @@ def main():
     if (work / "layers/osm_lijnen.parquet").exists():
         shutil.copy2(work / "layers/osm_lijnen.parquet", out / f"{name}_lijnen.parquet")
         log(f"wrote {out / f'{name}_lijnen.parquet'} (OSM motorways and railways, whole lines)")
+    if (work / "layers/knmi_wind_jaar.parquet").exists():
+        shutil.copy2(work / "layers/knmi_wind_jaar.parquet", out / f"{name}_jaar.parquet")
+        log(f"wrote {out / f'{name}_jaar.parquet'} (national values per year)")
 
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
@@ -787,6 +792,8 @@ def main_slice(args, reg: dict, parent: dict, data: Path, work: Path, out: Path,
 
     if (parent_out / f"{pname}_lijnen.parquet").exists():
         slice_lines(parent_out / f"{pname}_lijnen.parquet", set(grid["h3_id"].to_pylist()), out / f"{name}_lijnen.parquet")
+    if (parent_out / f"{pname}_jaar.parquet").exists():
+        shutil.copy2(parent_out / f"{pname}_jaar.parquet", out / f"{name}_jaar.parquet")  # national: same file
 
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
