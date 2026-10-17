@@ -196,7 +196,7 @@ use = ["gdn_stikstof_mol_ha"]
 alternatives = ["gdn_verzuring_mol_ha", "gcn_nh3_ug_m3"]
 covers = ["gdn_*"]
 trend = "ok"
-note = "RIVM historical series (edition October 2026): 2005-2025 recalculated with one method, so differences between years are real model change, weather included (deposition follows rainfall and wind). Modelled (OPS) and calibrated on measurements, 1 km: compare with Natura 2000 (natura2000_id) for exceedance. Not the yearly GDN rounds, which RIVM says cannot be strung into a series."
+note = "RIVM historical series (edition October 2026): 2005-2025 recalculated with one method, so differences between years are real model change, weather included (deposition follows rainfall and wind). Every year uses the SAME spatial distribution of emission sources, only the totals per country, year, sector and substance change (RIVM metadata), then each year is calibrated on that year's measurements: local emission changes (buy-outs, new stables) do NOT show up locally here; compare man_nh3_ug_m3 (measured) for that. 2025 is a provisional calculation (see break). Modelled (OPS) and calibrated on measurements, 1 km: compare with Natura 2000 (natura2000_id) for exceedance. Not the yearly GDN rounds, which RIVM says cannot be strung into a series."
 
 [[concept]]
 name = "Ammonia emissions (RIVM Emissieregistratie)"
@@ -363,3 +363,9 @@ columns = ["gemiddeld_gasverbruik_woning_area_weighted_average", "wb_gemiddeld_g
 years = [2019]
 kind = "method"
 note = "SUSPECTED, not confirmed by CBS: gas per home falls ~7% from 2018 to 2019 (CBS 81528NED national 1,270 -> 1,180 m3; the cube's stable-stock cells -6.9%) with the same heating degree days (knmi_graaddagen 2,660 both years), while CBS's energy balance (83989NED, homes) falls only 3.5%. CBS renewed its customer-file method with series starting in 2019 (publication 'Energielevering aardgaswoningen 2019-2021 (vernieuwd)', 2022) and 81528NED lacks the district-heating share for 2018 alone. Don't read 2018 -> 2019 as savings."
+
+[[break]]
+columns = ["gdn_stikstof_mol_ha", "gdn_verzuring_mol_ha", "kdw_overschreden_aandeel", "kdw_overschreden_m2", "kdw_overschrijding_mol_ha"]
+years = [2025]
+kind = "preliminary"
+note = "RIVM: 2025 in the historical series is a provisional calculation on that year's measurements and weather; emission data for 2025 were still missing, so RIVM leaves it out of its trend analysis. Lower mainly because 2025 was dry (less wet deposition); no structural conclusions (Monitor stikstofdepositie in Natura 2000-gebieden 2026, RIVM-2026-0018). The yearly KDW exceedance is computed from it."

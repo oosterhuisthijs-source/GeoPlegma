@@ -36,7 +36,7 @@ time = "yearly"
 columns = ["gdn_*"]
 tier = "modelled"
 native_resolution = "RIVM 1 km grid"
-reference_period = "calendar year Y (historical series, one method for 2005-2025)"
+reference_period = "calendar year Y (historical series, one method for 2005-2025; fixed spatial emission pattern, yearly totals; 2025 provisional)"
 time = "yearly"
 
 [[rule]]
