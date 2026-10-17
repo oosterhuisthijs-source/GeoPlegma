@@ -198,10 +198,12 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.7, `datacube_nl` 2026.10.17.6
-(national wind per year as side file `datacube_<region>_jaar.parquet`, `prepare/knmi_wind.py`; cube unchanged).
-Open: upwind-emission index only if the sim's v4 shows a signal (then test vs `man_nh3_ug_m3`), % aardgaswoningen
-(2024 buurt map only, offered); analyst contract file missing. Before: zh .17.6 / nl .17.5 (measured NH3 `man_*`,
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.8, `datacube_nl` 2026.10.17.7
+(RIVM deposition 2025 = provisional break; gdn series has a fixed spatial emission pattern). Open: NDVI (`s2`) wiring
++ release once Earth Engine delivers 2022-2025 (method validated on 2018-2021 after the LGN water-mask fix);
+upwind index parked (sim v4: no signal); Lbv buy-outs per gemeente (sim, low priority); % aardgaswoningen (2024
+buurt map only, offered); analyst contract file missing. Before: zh .17.7 / nl .17.6 (national wind per year as
+side file `datacube_<region>_jaar.parquet`, `prepare/knmi_wind.py`). Before: zh .17.6 / nl .17.5 (measured NH3 `man_*`,
 `prepare/man.py`; suspected 2019 gas break declared). Before: zh .17.5 / nl .17.4 (NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted
 Emissieregistratie export). Before: zh .17.4 / nl .17.3 (heating degree days `knmi_graaddagen`, CBS
 livestock zeros -> null, gas warning). Before: zh .17.3 / nl .17.2 (KNMI climate
@@ -237,9 +239,11 @@ Never edit the game repos from here:
   downloads them, then runs `prepare/s2_metrics.py` once -> `work_nl/layers/s2.parquet`. Log:
   `own_data/sources/s2_ndvi/watch.log`. It does NOT release. Next: validate (sealed share vs 3D BAG/NBBG, new
   sealing vs new BAG addresses, 2018/2022 anomaly vs KNMI deficit, green share vs groenklasse), wire `s2` into
-  assemble (YEARLY_FILES), provenance/guide/coarsen, then release. Status 2026-10-17 15:00: 2018-2020 downloaded,
-  2021 running, rest queued; the som-scenario project hit Earth Engine's noncommercial quota ("restricted mode"),
-  so the rest may be slow. The NL assemble already peaks at ~12.4 GB under the 12 GB cap: raise the cap a bit
+  assemble (YEARLY_FILES), provenance/guide/coarsen, then release. Status 2026-10-17 22:00: 2018-2021 downloaded,
+  2022-2025 queued for 20+ h; the som-scenario project is in Earth Engine's noncommercial "restricted mode".
+  `s2_metrics.py` was run on 2018-2021 and validated (ad hoc): water now from LGN (the NDVI-only rule counted the
+  Wadden Sea and lakes as never-green land); never-green vs 3D BAG footprint r 0.53, vs groenklasse -0.58;
+  greenhouses sit in between (say so in the column text). The watcher still runs `s2_metrics.py` when all 8 are in. The NL assemble already peaks at ~12.4 GB under the 12 GB cap: raise the cap a bit
   or trim assemble memory before adding `s2`.
 - KNMI: download complete (2018-2025, all 5 variables), released in zh .17.3 / nl .17.2.
 - Earth Engine auth = gcloud Application Default Credentials (quota project som-scenario); the old
