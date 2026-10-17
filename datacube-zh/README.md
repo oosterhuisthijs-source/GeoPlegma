@@ -123,7 +123,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5h | OSM high-voltage grid, substations, solar park power, marinas (`osm_hoogspanning_*`, `osm_onderstation_aantal`, `osm_zonnepark_vermogen_kw`, `osm_jachthaven_aantal`; static) | same Geofabrik extract | `prepare/osm_extra.py`: >= 50 kV only; exact lengths/areas in RD | done |
 | 5i | public charging points (`laad_punten_aantal`, `laad_punten_snel_aantal`; static snapshot) | [NDW open data](https://opendata.ndw.nu/) `charging_point_locations.geojson.gz` | `prepare/laadpalen.py`: location point -> H3 cell; points and >= 50 kW points | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
-| 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre | download pending (API key) |
+| 5j | climate per year (`knmi_*`) | KNMI Data Platform daily 1 km grids Tg1, Tx1, Tn1, Rd1, EV24 (CC BY 4.0) | `prepare/knmi.py`: yearly indicators per grid cell, cell under the hex centre (coast: nearest cell with data) | done |
 | 5k | nitrogen + acid deposition (`gdn_*`), air quality (`gcn_*`) per year | RIVM historical deposition series (edition 2026-10-06), GCN concentration maps per round | `prepare/rivm.py`: 1 km cell under the hex centre | done |
 | 5n | livestock per cell (`vee_*`), yearly | CBS StatLine 80781ned per gemeente | `prepare/vee.py`: spread over BRP farmland | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
@@ -396,6 +396,10 @@ neighbouring hexes share a value. `native_resolution` in the `.columns.json` say
   30 September). The daily files (~14,600 for 2018-2025, ~30 GB) come through the KNMI Open Data API, which allows
   ~1000 requests/hour with a registered key (`KNMI_API_KEY`); KNMI's public anonymous key shares one quota with
   everybody and is mostly rate-limited. `knmi.py download` resumes and waits out rate limits.
+  A hex whose centre falls on a grid cell without data (along the coast) takes the nearest cell with data within 3 km.
+  Precipitation and evaporation are interpolated over land only, so ~6,600 hexes of open water (Wadden Sea, outer
+  Westerschelde) have no `knmi_neerslag_mm`/`knmi_verdamping_mm`/`knmi_zware_neerslag_dagen`/
+  `knmi_neerslagtekort_max_mm`; temperature covers every hex.
 - `gdn_stikstof_mol_ha`, `gdn_verzuring_mol_ha`: RIVM's historical series, the whole 2005-2025 range recalculated with
   one method (edition 6 October 2026), so suitable for trends. Not the yearly GDN rounds (RIVM: those cannot be strung
   together).

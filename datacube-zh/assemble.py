@@ -187,6 +187,8 @@ LAAD_INFO = {
 
 # Measurements and model maps per year: name -> (source, unit, aggregation)
 CELL_CENTRE = "waarde van de rastercel onder het celcentrum"
+KNMI_CELL = ("waarde van de rastercel onder het celcentrum (aan de kust: dichtstbijzijnde cel met data, "
+             "binnen 3 km)")
 KNMI_SRC = ("KNMI Data Platform, dagelijkse 1 km-grids (Tg1 v5, Tx1 v2, Tn1 v2, Rd1 v5, EV24 v2; interpolatie van "
             "stationsmetingen), CC BY 4.0; prepare/knmi.py")
 GDN_SRC = ("RIVM historische reeks stikstofdepositie en verzurende depositie, editie 2026-10-06 (hele reeks 2005-2025 "
@@ -201,13 +203,13 @@ VEE_SRC = ("CBS StatLine 80781ned (landbouwtelling per gemeente, dieren op 1 apr
 VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 MEASURE_INFO = {
-    "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {CELL_CENTRE}"),
-    "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {CELL_CENTRE}"),
-    "knmi_tropische_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 30 graden C; {CELL_CENTRE}"),
-    "knmi_vorstdagen": (KNMI_SRC, "dagen", f"dagen met minimumtemperatuur < 0 graden C; {CELL_CENTRE}"),
-    "knmi_neerslag_mm": (KNMI_SRC, "mm", f"jaarsom neerslag (dagen van 08 tot 08 UT); {CELL_CENTRE}"),
-    "knmi_zware_neerslag_dagen": (KNMI_SRC, "dagen", f"dagen met >= 20 mm neerslag; {CELL_CENTRE}"),
-    "knmi_verdamping_mm": (KNMI_SRC, "mm", f"jaarsom Makkink-referentieverdamping; {CELL_CENTRE}"),
+    "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {KNMI_CELL}"),
+    "knmi_zomerse_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 25 graden C; {KNMI_CELL}"),
+    "knmi_tropische_dagen": (KNMI_SRC, "dagen", f"dagen met maximumtemperatuur >= 30 graden C; {KNMI_CELL}"),
+    "knmi_vorstdagen": (KNMI_SRC, "dagen", f"dagen met minimumtemperatuur < 0 graden C; {KNMI_CELL}"),
+    "knmi_neerslag_mm": (KNMI_SRC, "mm", f"jaarsom neerslag (dagen van 08 tot 08 UT); {KNMI_CELL}"),
+    "knmi_zware_neerslag_dagen": (KNMI_SRC, "dagen", f"dagen met >= 20 mm neerslag; {KNMI_CELL}"),
+    "knmi_verdamping_mm": (KNMI_SRC, "mm", f"jaarsom Makkink-referentieverdamping; {KNMI_CELL}"),
     "knmi_neerslagtekort_max_mm": (KNMI_SRC, "mm", "grootste potentiele neerslagtekort van het groeiseizoen: "
                                    "cumulatief verdamping - neerslag vanaf 1 april, maximum tot 30 september (KNMI-"
                                    f"definitie, niet afgekapt op 0); {CELL_CENTRE}"),

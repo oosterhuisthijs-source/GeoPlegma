@@ -19,7 +19,8 @@ Two steps:
                                          anonymous key (shared quota, mostly rate-limited).
   knmi.py [--region zh]                  build <work>/layers/knmi.parquet
 
-Per hex and calendar year (value of the 1 km grid cell under the hex centre):
+Per hex and calendar year (value of the 1 km grid cell under the hex centre; a centre on a cell without data,
+along the coast, takes the nearest cell with data within 3 km):
   knmi_temp_gem_c             mean daily mean temperature (°C)
   knmi_zomerse_dagen          days with maximum >= 25 °C
   knmi_tropische_dagen        days with maximum >= 30 °C
@@ -45,6 +46,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 from pathlib import Path
 
 import h3
@@ -65,6 +67,10 @@ DATASETS = {"tg": ("Tg1", 5), "tx": ("Tx1", 2), "tn": ("Tn1", 2), "rd": ("Rd1", 
 FNAME = re.compile(r"_L3__(\d{8})T\d{6}_\d{8}T\d{6}_(\d{4})\.nc$")
 COLUMNS = ["knmi_temp_gem_c", "knmi_zomerse_dagen", "knmi_tropische_dagen", "knmi_vorstdagen", "knmi_neerslag_mm",
            "knmi_zware_neerslag_dagen", "knmi_verdamping_mm", "knmi_neerslagtekort_max_mm"]
+# daily variables each indicator is computed from (a grid cell without data in any of them has no value)
+SOURCES = {"knmi_temp_gem_c": ["tg"], "knmi_zomerse_dagen": ["tx"], "knmi_tropische_dagen": ["tx"],
+           "knmi_vorstdagen": ["tn"], "knmi_neerslag_mm": ["rd"], "knmi_zware_neerslag_dagen": ["rd"],
+           "knmi_verdamping_mm": ["ev"], "knmi_neerslagtekort_max_mm": ["ev", "rd"]}
 
 
 def log(*a):
@@ -171,6 +177,20 @@ def year_stack(data: Path, var: str, year: int) -> np.ndarray | None:
     return np.stack([read_day(by_day[d]) for d in sorted(by_day)])
 
 
+def sample(g: np.ndarray, iy: np.ndarray, ix: np.ndarray, max_r: int = 3) -> np.ndarray:
+    """Grid value under each hex centre. A centre on a cell without data (coast, IJsselmeer edge) takes the
+    nearest cell with data within max_r cells (km); further out it stays NaN."""
+    v = g[iy, ix]
+    for i in np.flatnonzero(np.isnan(v)):
+        y0, y1 = max(iy[i] - max_r, 0), min(iy[i] + max_r + 1, g.shape[0])
+        x0, x1 = max(ix[i] - max_r, 0), min(ix[i] + max_r + 1, g.shape[1])
+        yy, xx = np.nonzero(~np.isnan(g[y0:y1, x0:x1]))
+        if len(yy):
+            k = np.argmin((yy + y0 - iy[i]) ** 2 + (xx + x0 - ix[i]) ** 2)
+            v[i] = g[yy[k] + y0, xx[k] + x0]
+    return v
+
+
 def grid_coords(data: Path) -> tuple[np.ndarray, np.ndarray]:
     f = next((data / "sources/knmi/Tg1").glob("*.nc"))
     with netCDF4.Dataset(f) as ds:
@@ -203,7 +223,9 @@ def main():
         st = {v: year_stack(data, v, year) for v in DATASETS}
         grids = {}
         if st["tg"] is not None:
-            grids["knmi_temp_gem_c"] = np.nanmean(st["tg"], axis=0)
+            with warnings.catch_warnings():  # cells without data (sea) are all-NaN
+                warnings.simplefilter("ignore", RuntimeWarning)
+                grids["knmi_temp_gem_c"] = np.nanmean(st["tg"], axis=0)
         if st["tx"] is not None:
             grids["knmi_zomerse_dagen"] = (st["tx"] >= 25).sum(axis=0).astype(np.float32)
             grids["knmi_tropische_dagen"] = (st["tx"] >= 30).sum(axis=0).astype(np.float32)
@@ -219,10 +241,13 @@ def main():
             d1 = (dt.date(year, 9, 30) - dt.date(year, 1, 1)).days + 1
             deficit = np.cumsum(st["ev"][d0:d1] - st["rd"][d0:d1], axis=0)
             grids["knmi_neerslagtekort_max_mm"] = deficit.max(axis=0)
-        # a grid cell that is NaN (outside the interpolation area) stays null for its hexes
+        # counts and nansums turn a cell without data into 0: set those back to NaN before sampling
+        nodata = {v: np.isnan(a).all(axis=0) for v, a in st.items() if a is not None}
+        for c, g in grids.items():
+            g[np.logical_or.reduce([nodata[v] for v in SOURCES[c]])] = np.nan
         for c in COLUMNS:
             g = grids.get(c)
-            v = g[iy, ix] if g is not None else np.full(len(ids), np.nan, np.float32)
+            v = sample(g, iy, ix) if g is not None else np.full(len(ids), np.nan, np.float32)
             rows[c].append(np.round(v.astype(np.float64), 1))
         rows["h3_id"] += ids
         rows["year_int"].append(np.full(len(ids), year, np.int32))
