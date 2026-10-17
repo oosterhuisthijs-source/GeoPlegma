@@ -198,10 +198,11 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.6, `datacube_nl` 2026.10.17.5
-(measured NH3 `man_*`, `prepare/man.py`; suspected 2019 gas break declared). Open: wind (asked the sim what it
-wants: national table vs upwind-emission index), % aardgaswoningen (2024 buurt map only, offered); analyst contract
-file missing. Before: zh .17.5 / nl .17.4 (NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.7, `datacube_nl` 2026.10.17.6
+(national wind per year as side file `datacube_<region>_jaar.parquet`, `prepare/knmi_wind.py`; cube unchanged).
+Open: upwind-emission index only if the sim's v4 shows a signal (then test vs `man_nh3_ug_m3`), % aardgaswoningen
+(2024 buurt map only, offered); analyst contract file missing. Before: zh .17.6 / nl .17.5 (measured NH3 `man_*`,
+`prepare/man.py`; suspected 2019 gas break declared). Before: zh .17.5 / nl .17.4 (NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted
 Emissieregistratie export). Before: zh .17.4 / nl .17.3 (heating degree days `knmi_graaddagen`, CBS
 livestock zeros -> null, gas warning). Before: zh .17.3 / nl .17.2 (KNMI climate
 `knmi_*`, `prepare/knmi.py`). Before: zh .17.1 / nl .17.1 (livestock `vee_*`,
