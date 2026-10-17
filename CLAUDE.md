@@ -196,8 +196,8 @@ scenario logic lives elsewhere and reads the cube as read-only input. Consumers 
 `own_data/releases/datacube_zh/<version>/` (+ `latest` symlink, `CHANGELOG.md`, `diff.md`, `GUIDE.md`), checking
 consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Releases"). This session cuts
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
-`simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl) and `cube-analyst` (nl), whose contract files don't exist yet
-(asked them to write them). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
+`simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
+written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
 `SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.5, `datacube_nl` 2026.10.17.4
 (NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted Emissieregistratie export). Open requests, in order:
 measured NH3 (MAN/LML), CBS note for the 2019 gas step, wind (ERA5/stations), homes with a gas connection per
