@@ -94,6 +94,17 @@ def column_stats(parquet: Path, columns: dict) -> dict:
     return stats
 
 
+# contracts may use DuckDB / SQL type names; the manifest has Arrow's
+TYPE_ALIASES = {"bigint": "int64", "integer": "int32", "int": "int32", "smallint": "int16", "tinyint": "int8",
+                "boolean": "bool", "varchar": "string", "text": "string", "float8": "double", "real": "float",
+                "float4": "float", "large_string": "string"}
+
+
+def same_type(want: str, have: str) -> bool:
+    norm = lambda t: TYPE_ALIASES.get(t.lower(), t.lower())  # noqa: E731
+    return norm(want) == norm(have)
+
+
 def check_contract(name: str, contract: dict, columns: dict, stats: dict) -> list[str]:
     """Problems with this release for one consumer contract (empty = OK)."""
     problems = []
@@ -105,7 +116,7 @@ def check_contract(name: str, contract: dict, columns: dict, stats: dict) -> lis
         if col not in columns:
             problems.append(f"{col}: column missing")
             continue
-        if "type" in want and want["type"] != columns[col]["type"]:
+        if "type" in want and not same_type(want["type"], columns[col]["type"]):
             problems.append(f"{col}: type {columns[col]['type']} (contract {want['type']})")
         per_year = stats[col]
         # a column-level "years" narrows the contract's years: a known, accepted gap for that column only
