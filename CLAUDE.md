@@ -198,11 +198,14 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.17.8, `datacube_nl` 2026.10.17.7
-(RIVM deposition 2025 = provisional break; gdn series has a fixed spatial emission pattern). Open: NDVI (`s2`) wiring
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.18, `datacube_nl` 2026.10.18
+(metadata only: static raster units, `waterberging` = mm; sharper CBS 2025 v1 break note: suppressed squares add 0,
+rebuild when CBS publishes 2025 v2). Open: asylum reception data for the sim (COA locations, occupancy per gemeente,
+taakstelling vergunninghouders; sources being researched). Open: NDVI (`s2`) wiring
 + release once Earth Engine delivers 2022-2025 (method validated on 2018-2021 after the LGN water-mask fix);
 upwind index parked (sim v4: no signal); Lbv buy-outs per gemeente (sim, low priority); % aardgaswoningen (2024
-buurt map only, offered); analyst contract file missing. Before: zh .17.7 / nl .17.6 (national wind per year as
+buurt map only, offered); analyst contract file missing. Before: zh .17.8 / nl .17.7 (RIVM deposition 2025 = provisional
+break; gdn series has a fixed spatial emission pattern). Before: zh .17.7 / nl .17.6 (national wind per year as
 side file `datacube_<region>_jaar.parquet`, `prepare/knmi_wind.py`). Before: zh .17.6 / nl .17.5 (measured NH3 `man_*`,
 `prepare/man.py`; suspected 2019 gas break declared). Before: zh .17.5 / nl .17.4 (NH3 emissions `nh3_*` 2019-2024, `prepare/nh3.py`, scripted
 Emissieregistratie export). Before: zh .17.4 / nl .17.3 (heating degree days `knmi_graaddagen`, CBS
