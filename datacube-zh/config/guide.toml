@@ -133,6 +133,45 @@ trend = "no"
 note = "Static maps: starting conditions, not something that changes with the years in the cube. waterberging = mm of water the soil can still store before it is saturated to ground level ((ground level - mean highest groundwater) x porosity 0.25 x land fraction, RIVM ANK d15, 250 m model cells, groundwater of 1998-2006, map 2014, indicative). Median ~185 mm; > ~2,000 mm only on high ground with deep groundwater (Veluwe, South Limburg): read that as plenty."
 
 [[concept]]
+name = "Primary flood defences (Rijkswaterstaat)"
+use = ["wk_primair_lengte_m", "wk_norm_signalering_jaar", "wk_lbo1_oordeel", "wk_hwbp_lengte_m"]
+alternatives = ["wk_norm_ondergrens_jaar", "wk_hwbp_realisatie_start", "wk_hwbp_realisatie_eind", "wk_hwbp_afgerond_lengte_m"]
+covers = ["wk_*"]
+trend = "no"
+note = "Current state repeated in every year. Norms as return period N (1/N per year; signaleringswaarde = the safety level aimed for, ondergrens = the legal minimum); LBO-1 = first national assessment of the new norms (A+ much safer than required .. D much less safe than the lower limit; 146 of 237 sections C or D). HWBP: dyke stretches in a current reinforcement project with planned construction years (they move with every programme), plus completed projects without a year. Whole lines in datacube_<region>_waterkeringen.parquet. Sea dunes and dams are part of the sections; regional dykes are not included."
+
+[[concept]]
+name = "Cloudburst water depth (Klimaateffectatlas)"
+use = ["regen_70mm_1h_aandeel_10cm", "regen_70mm_1h_diepte_gem_m"]
+alternatives = ["regen_70mm_1h_diepte_max_m", "regen_70mm_1h_aandeel_30cm"]
+covers = ["regen_*"]
+trend = "no"
+note = "Static model: water on the ground after a design shower of 70 mm in 1 hour, current terrain and sewers, 0.5 m pixels read at full resolution. Not flooding from dykes or rivers (flooddepth_* = LIWO). Permanent water is not counted as flooded. Credit: Klimaateffectatlas, 2026 (CC BY 4.0)."
+
+[[concept]]
+name = "Subsidence: measured and forecast"
+use = ["bodembeweging_mm_jaar", "bodemdaling_2020_2050_hoog_m"]
+alternatives = ["bodembeweging_min_mm_jaar", "bodembeweging_ondiep_mm_jaar", "bodemdaling_2020_2050_laag_m"]
+covers = ["bodembeweging_*", "bodemdaling_*"]
+trend = "no"
+note = "Static. bodembeweging_* = measured InSAR ground motion in mm/year (negative = sinking), area-weighted over the Klimaateffectatlas hexagons in the cell; only where InSAR has reflectors (buildings, roads), so meadows and peat land are mostly empty; ondiep = the shallow part (soil compaction, peat oxidation) rather than deep causes (gas, salt). KEA does not state the InSAR source or period (likely EGMS 2019-2023). bodemdaling_2020_2050_* = Deltares forecast of cumulative subsidence by 2050 in m (laag/hoog scenario, 100 m grid), the peat polders of Holland and Friesland up to ~0.5 m."
+
+[[concept]]
+name = "Electricity grid congestion (Netbeheer Nederland)"
+use = ["net_afname_kleur_max", "net_opwek_kleur_max"]
+alternatives = ["net_afname_rood_aandeel", "net_opwek_rood_aandeel", "net_voedingsgebied_id"]
+covers = ["net_*"]
+trend = "no"
+note = "Snapshot of October 2026 repeated in every year. Colour per 6-digit postcode (0 none, 1 yellow, 2 orange, 3 red = no transport capacity, waiting list), offtake (afname) and feed-in (opwek); the colour follows the operator's supply area, so whole districts share it. MW figures (available and needed capacity, waiting list) per supply area in datacube_<region>_netgebieden.parquet; history per gemeente (7 Internet Archive copies 2023-2024, partly national, + own monthly downloads from October 2026) in datacube_<region>_netcongestie.parquet."
+
+[[concept]]
+name = "Data centres"
+use = ["osm_datacentrum_aantal", "osm_datacentrum_m2"]
+covers = ["osm_datacentrum_*"]
+trend = "no"
+note = "Locations from OpenStreetMap (latest extract, ~100 sites after merging campus and building outlines; no power or opening year). Power, floor area, energy use and opening year come per gemeente and year from RVO's energy-efficiency reports (data year 2025, 104 data centres >= 500 kW; power for 48) in datacube_<region>_datacentra.parquet. Credit: © OpenStreetMap contributors (ODbL)."
+
+[[concept]]
 name = "Safety hazards"
 use = ["explosieaandachtsgebied", "brandaandachtsgebied", "gifwolkaandachtsgebied"]
 trend = "no"

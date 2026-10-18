@@ -14,6 +14,10 @@ Writes <data>/releases/datacube_<region>/<version>/:
 - datacube_<region>_jaar.parquet                national values per year (wind), when built
 - datacube_<region>_gemeente.parquet            values per gemeente and year (permit-holder housing), when built
 - datacube_<region>_coa.parquet                 COA reception capacity per gemeente and snapshot date, when built
+- datacube_<region>_datacentra.parquet          RVO data centres per gemeente and year, when built
+- datacube_<region>_netcongestie.parquet        grid congestion per gemeente and snapshot, when built
+- datacube_<region>_netgebieden.parquet         grid supply areas (MW), when built
+- datacube_<region>_waterkeringen.parquet       primary flood defences + HWBP stretches as whole lines, when built
 - manifest.json   version, git commit, assembly time, rows/columns/years, sources per column group,
                   sha256 + size of every file, contract results, notes
 - stats.json      per column and year: non-null share, min, max, mean (numeric) / distinct (string)
@@ -51,6 +55,10 @@ import duckdb
 HERE = Path(__file__).parent
 MEAN_SHIFT = 0.05  # relative mean change per column/year reported in diff.md
 NULL_SHIFT = 0.02  # absolute non-null share change reported in diff.md
+
+
+# side files next to the cube (datacube_<region>_<suffix>.parquet), copied into a release when assemble.py built them
+SIDE_FILES = ["lijnen", "jaar", "gemeente", "coa", "datacentra", "netcongestie", "netgebieden", "waterkeringen"]
 
 
 def log(*a):
@@ -388,14 +396,9 @@ def main():
         if coarse.stat().st_mtime < cube_time:
             sys.exit(f"{coarse.name} is older than {name}.parquet: run coarsen.py --region {args.region} first")
         sources += [coarse, coarse.with_suffix(".columns.json")]
-    if (out / f"{name}_lijnen.parquet").exists():
-        sources.append(out / f"{name}_lijnen.parquet")  # OSM lines (prepare/osm.py), copied by assemble.py
-    if (out / f"{name}_jaar.parquet").exists():
-        sources.append(out / f"{name}_jaar.parquet")  # national per-year table (prepare/knmi_wind.py)
-    if (out / f"{name}_gemeente.parquet").exists():
-        sources.append(out / f"{name}_gemeente.parquet")  # per gemeente and year (prepare/vergunninghouders.py)
-    if (out / f"{name}_coa.parquet").exists():
-        sources.append(out / f"{name}_coa.parquet")  # per gemeente and snapshot date (prepare/coa.py)
+    for suffix in SIDE_FILES:  # side tables written by assemble.py, when built
+        if (out / f"{name}_{suffix}.parquet").exists():
+            sources.append(out / f"{name}_{suffix}.parquet")
 
     root = data / "releases" / name
     dest = root / args.version

@@ -251,6 +251,27 @@ native_resolution = "turbine point"
 reference_period = "RIVM register of January 2026"
 time = "static"
 
+[[rule]]
+columns = ["wk_*"]
+tier = "register"
+native_resolution = "dyke section / HWBP stretch line (RWS Waterveiligheidsportaal)"
+reference_period = "state of October 2026: legal norms (Omgevingswet), LBO-1 assessment (to 2023), HWBP planning"
+time = "static"
+
+[[rule]]
+columns = ["net_voedingsgebied_id"]
+tier = "key"
+native_resolution = "grid supply area of the regional operator"
+reference_period = "Netbeheer Nederland capaciteitskaart, October 2026"
+time = "static"
+
+[[rule]]
+columns = ["net_*"]
+tier = "register"
+native_resolution = "6-digit postcode (colour per supply area), sampled at 7 points per cell"
+reference_period = "Netbeheer Nederland capaciteitskaart, October 2026 (history per gemeente in a side table)"
+time = "static"
+
 # --- static maps (config/static.toml) ----------------------------------------------------------------
 [[rule]]
 columns = ["groundheight"]
@@ -336,3 +357,24 @@ tier = "classified"
 native_resolution = "LGN 5 m raster"
 reference_period = "imagery and registrations of Y"
 time = "yearly"
+
+[[rule]]
+columns = ["bodemdaling_2020_2050_*"]
+tier = "modelled"
+native_resolution = "100 m grid (Deltares, Klimaateffectatlas)"
+reference_period = "forecast of cumulative subsidence 2020-2050 (laag / hoog scenario)"
+time = "static"
+
+[[rule]]
+columns = ["bodembeweging_*"]
+tier = "measured"
+native_resolution = "InSAR, ~100 m hexagons (Klimaateffectatlas), only where there are reflectors"
+reference_period = "mean velocity of a recent multi-year period (not stated by KEA; the province's identical maps: EGMS 2019-2023)"
+time = "static"
+
+[[rule]]
+columns = ["regen_*"]
+tier = "modelled"
+native_resolution = "0.5 m (Klimaateffectatlas 2026 cloudburst model)"
+reference_period = "current terrain and sewers; a design shower (70 mm in 1 hour), not an event"
+time = "static"

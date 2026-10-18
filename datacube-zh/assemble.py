@@ -20,6 +20,11 @@ Writes, under the region's out directory (config/regions.toml):
                                cell (prepare/vergunninghouders.py), when prepared; zh: its gemeenten only
 - datacube_<region>_coa.parquet   COA reception capacity per gemeente (2024 borders) and snapshot date
                                (prepare/coa.py), when prepared; zh: its gemeenten only
+- datacube_<region>_datacentra.parquet, _netcongestie.parquet   per gemeente: RVO data centres per year
+                               (prepare/datacentra.py), grid congestion per snapshot (prepare/netcongestie.py)
+- datacube_<region>_netgebieden.parquet   grid supply areas with MW figures (prepare/netcongestie.py)
+- datacube_<region>_waterkeringen.parquet   primary flood defences and HWBP stretches as whole lines
+                               (prepare/waterkeringen.py); zh: lines crossing zh
 - volledige_tijdreeks_delta/   (zh only) drop-in replacement for ruimtelijke-assistent:
                                the original's exact columns, order and types,
                                CBS columns min-max scaled to 0-255 over all years
@@ -44,7 +49,8 @@ from deltalake import write_deltalake
 
 YEARS = range(2018, 2026)
 # per-gemeente side tables (work/layers/<layer>.parquet -> out/datacube_<region>_<suffix>.parquet), keyed on gemeentecode
-GEMEENTE_TABLES = {"vergunninghouders_gemeente": "gemeente", "coa_gemeente": "coa"}
+GEMEENTE_TABLES = {"vergunninghouders_gemeente": "gemeente", "coa_gemeente": "coa", "datacentra_gemeente": "datacentra",
+                   "netcongestie_gemeente": "netcongestie"}
 DEFAULT_ORIGINAL = "/home/thijsradijs/ruimtelijke-assistent/src/backend/data/volledige_tijdreeks_delta"
 CBS_SUFFIXES = ("_sum", "_area_weighted_average", "_min", "_max")
 
@@ -186,6 +192,10 @@ OSM_EXTRA_INFO = {
                                   "oppervlakteaandeel; parken zonder vermogen in OSM (ongeveer de helft) krijgen hun "
                                   "oppervlak x het mediane kW/ha van de parken met vermogen"),
     "osm_jachthaven_aantal": ("aantal", "jachthavens (leisure=marina) waarvan het midden in de cel ligt"),
+    "osm_datacentrum_aantal": ("aantal", "datacentra (telecom=data_center of building=data_center) waarvan het midden in de "
+                               "cel ligt; overlappende of rakende vlakken (campus + gebouwen) tellen als een"),
+    "osm_datacentrum_m2": ("m2", "grondoppervlak van datacentra binnen de cel (samengevoegde vlakken; als punt gekarteerde "
+                           "datacentra tellen niet mee); vermogen en openingsjaar per gemeente in datacube_<regio>_datacentra.parquet"),
 }
 LAAD_SOURCE = "NDW open data, charging_point_locations.geojson.gz (stand {stamp}); prepare/laadpalen.py"
 LAAD_INFO = {
@@ -217,7 +227,24 @@ MAN_SRC = ("RIVM Meetnet Ammoniak Nederland (man.rivm.nl): jaargemiddelde per me
            "~100 natuurgebieden + 17 punten daarbuiten sinds 2021; prepare/man.py")
 VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
+WK_SRC = ("Rijkswaterstaat Waterveiligheidsportaal WFS (nbpw_dijktrajecten_formeel, lbo1_veiligheidsoordeel_dijktrajecten, "
+          "hwbp_actuele/afgesloten_projecten_dijkvakken), CC0; huidige stand; prepare/waterkeringen.py")
+NET_SRC = ("Netbeheer Nederland capaciteitskaart (congestie_pc6.csv, stand oktober 2026), postcodes via CBS PC6 2024 v2; "
+           "geen licentie vermeld; prepare/netcongestie.py")
 MEASURE_INFO = {
+    "wk_primair_lengte_m": (WK_SRC, "m", "lengte primaire waterkering (dijktrajecten) binnen de cel; exacte lengte (lijn x zeshoek in RD)"),
+    "wk_norm_signalering_jaar": (WK_SRC, "jaar (terugkeertijd)", "strengste signaleringswaarde van de dijktrajecten in de cel, als N in 1/N per jaar (Omgevingswet)"),
+    "wk_norm_ondergrens_jaar": (WK_SRC, "jaar (terugkeertijd)", "strengste ondergrens van de dijktrajecten in de cel, als N in 1/N per jaar"),
+    "wk_lbo1_oordeel": (WK_SRC, "categorie A+..D", "slechtste veiligheidsoordeel (eerste landelijke beoordeling LBO-1, tot 2023) van de dijktrajecten in de cel; A+ = veel veiliger dan de norm, D = veel minder veilig dan de ondergrens"),
+    "wk_hwbp_lengte_m": (WK_SRC, "m", "lengte dijk in een lopend HWBP-project (verkenning, planuitwerking of realisatie) binnen de cel"),
+    "wk_hwbp_realisatie_start": (WK_SRC, "jaar", "vroegste geplande start van de uitvoering van de HWBP-projecten in de cel (planning, vaak leeg)"),
+    "wk_hwbp_realisatie_eind": (WK_SRC, "jaar", "laatste geplande einde van de uitvoering van de HWBP-projecten in de cel (planning, vaak leeg)"),
+    "wk_hwbp_afgerond_lengte_m": (WK_SRC, "m", "lengte dijk van afgeronde HWBP-projecten (status dijk veilig) binnen de cel; geen jaartal bekend"),
+    "net_afname_kleur_max": (NET_SRC, "kleurcode 0-3", "slechtste congestiekleur voor afname (0 geen, 1 geel, 2 oranje, 3 rood = geen capaciteit, wachtrij) op 7 meetpunten in de cel (middens van de res-10-kinderen), via de postcode (PC6) van elk punt"),
+    "net_afname_rood_aandeel": (NET_SRC, "0-1", "aandeel van de 7 meetpunten in de cel met rode congestie voor afname"),
+    "net_opwek_kleur_max": (NET_SRC, "kleurcode 0-3", "slechtste congestiekleur voor invoeding/opwek op 7 meetpunten in de cel, via de postcode (PC6)"),
+    "net_opwek_rood_aandeel": (NET_SRC, "0-1", "aandeel van de 7 meetpunten in de cel met rode congestie voor invoeding/opwek"),
+    "net_voedingsgebied_id": (NET_SRC, None, "voedingsgebied van de regionale netbeheerder (meeste meetpunten); MW-cijfers per gebied in datacube_<regio>_netgebieden.parquet"),
     "knmi_temp_gem_c": (KNMI_SRC, "graden C", f"jaargemiddelde van de daggemiddelde temperatuur; {KNMI_CELL}"),
     "knmi_graaddagen": (KNMI_SRC, "graaddagen", "graaddagen onder 18 graden C: som over de dagen van max(0, 18 - "
                         f"daggemiddelde temperatuur), ongewogen; {KNMI_CELL}"),
@@ -277,6 +304,9 @@ MEASURE_WARNINGS = {
     "gcn_": ("elk jaar is een eigen rekenronde: RIVM zegt dat de rondes niet als reeks achter elkaar te zetten zijn "
              "(de kalibratie op metingen is in de loop van de jaren veranderd); de landelijke daling is echt, lokale "
              "trends kunnen methode zijn"),
+    "net_": ("momentopname van de netbeheerders (oktober 2026), geen reeks: de kleur per postcode volgt het voedingsgebied, "
+             "dus een hele wijk kleurt mee; gebruik als beginstand, niet als meting van de straat"),
+    "wk_hwbp_realisatie": ("HWBP-planning: jaartallen schuiven bij elke programmering; leeg = (nog) niet gepland"),
     "vee_": ("model: gemeentetotalen (CBS telt dieren in de gemeente van de vestiging) verdeeld over de landbouwgrond; "
              "een cel toont een aannemelijke dichtheid, niet een echt bedrijf. Gemeentetotalen kloppen exact"),
     "kdw_overschr": ("depositie van het 1 km-grid op elk AERIUS-hexagon; RIVM rekent met depositie per hectare, dus "
@@ -493,7 +523,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
         if layer["agg"] == "numeric":
             src = f"{src} [{layer.get('parquet', '')}]"
             for o in layer.get("outputs", []):
-                info[o["name"]] = (src, None, f"{numeric_how[o['agg']]} (bronkolom {o['column']})")
+                info[o["name"]] = (src, o.get("unit"), f"{numeric_how[o['agg']]} (bronkolom {o['column']})")
             if layer.get("coverage"):
                 info[layer["coverage"]] = (src, "0-1", "aandeel van de cel bedekt door de objecten")
             continue
@@ -551,6 +581,14 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
             unit, agg = OSM_EXTRA_INFO[name]
         elif name in MEASURE_INFO:
             src, unit, agg = MEASURE_INFO[name]
+        elif name.startswith("regen_"):
+            scen = name.split("_")[1] + " in " + name.split("_")[2].replace("h", " uur")
+            src = (f"Klimaateffectatlas 2026, waterdiepte bij hevige neerslag ({scen}), 0,5 m, CC BY 4.0; "
+                   "prepare/regenwater.py")
+            unit, agg = {"diepte_gem_m": ("m", "gemiddelde waterdiepte over de cel (droog = 0), volle resolutie"),
+                         "diepte_max_m": ("m", "diepste pixel (0,5 m) in de cel"),
+                         "aandeel_10cm": ("0-1", "aandeel van de cel met meer dan 10 cm water"),
+                         "aandeel_30cm": ("0-1", "aandeel van de cel met meer dan 30 cm water")}[name.split("_", 3)[3]]
         elif name in LAAD_INFO:
             src = LAAD_SOURCE.format(stamp=LAAD_STAMP or "onbekend")
             unit, agg = LAAD_INFO[name]
@@ -692,7 +730,8 @@ def main():
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
-    for layer in ("wind", "osm", "osm_extra", "laadpalen"):
+    rain = [p.stem for p in sorted((work / "layers").glob("regen_*.parquet"))]  # prepare/regenwater.py, per scenario
+    for layer in ("wind", "osm", "osm_extra", "laadpalen", "waterkeringen", "netcongestie", *rain):
         if (work / f"layers/{layer}.parquet").exists():
             base = left_join(base, pq.read_table(work / f"layers/{layer}.parquet"), "h3_id")
     lgn = lgn_columns(work)
@@ -734,6 +773,12 @@ def main():
     if (work / "layers/osm_lijnen.parquet").exists():
         shutil.copy2(work / "layers/osm_lijnen.parquet", out / f"{name}_lijnen.parquet")
         log(f"wrote {out / f'{name}_lijnen.parquet'} (OSM motorways and railways, whole lines)")
+    if (work / "layers/waterkeringen_lijnen.parquet").exists():
+        shutil.copy2(work / "layers/waterkeringen_lijnen.parquet", out / f"{name}_waterkeringen.parquet")
+        log(f"wrote {out / f'{name}_waterkeringen.parquet'} (primary flood defences, whole lines)")
+    if (work / "layers/netgebieden.parquet").exists():
+        shutil.copy2(work / "layers/netgebieden.parquet", out / f"{name}_netgebieden.parquet")
+        log(f"wrote {out / f'{name}_netgebieden.parquet'} (grid supply areas)")
     if (work / "layers/knmi_wind_jaar.parquet").exists():
         shutil.copy2(work / "layers/knmi_wind_jaar.parquet", out / f"{name}_jaar.parquet")
         log(f"wrote {out / f'{name}_jaar.parquet'} (national values per year)")
@@ -804,6 +849,17 @@ def main_slice(args, reg: dict, parent: dict, data: Path, work: Path, out: Path,
         slice_lines(parent_out / f"{pname}_lijnen.parquet", set(grid["h3_id"].to_pylist()), out / f"{name}_lijnen.parquet")
     if (parent_out / f"{pname}_jaar.parquet").exists():
         shutil.copy2(parent_out / f"{pname}_jaar.parquet", out / f"{name}_jaar.parquet")  # national: same file
+    if (parent_out / f"{pname}_waterkeringen.parquet").exists():
+        slice_lines(parent_out / f"{pname}_waterkeringen.parquet", set(grid["h3_id"].to_pylist()),
+                    out / f"{name}_waterkeringen.parquet")
+    if (parent_out / f"{pname}_netgebieden.parquet").exists():
+        areas = set(pq.read_table(out / f"{name}.parquet", columns=["net_voedingsgebied_id"])["net_voedingsgebied_id"]
+                    .to_pylist())
+        g = pq.read_table(parent_out / f"{pname}_netgebieden.parquet")
+        g = g.filter(pa.array([a in areas for a in g["voedingsgebied_id"].to_pylist()]))
+        pq.write_table(g.replace_schema_metadata(pq.read_schema(parent_out / f"{pname}_netgebieden.parquet").metadata),
+                       out / f"{name}_netgebieden.parquet")
+        log(f"wrote {out / f'{name}_netgebieden.parquet'} ({g.num_rows} supply areas)")
     mine = set(pq.read_table(out / f"{name}.parquet", columns=["gemeentecode"])["gemeentecode"].to_pylist())
     for suffix in GEMEENTE_TABLES.values():
         if (parent_out / f"{pname}_{suffix}.parquet").exists():

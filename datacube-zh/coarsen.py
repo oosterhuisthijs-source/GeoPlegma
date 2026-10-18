@@ -63,7 +63,17 @@ WIND_RULES = {"wind_aantal": "sum", "wind_vermogen_kw": "sum", "wind_ashoogte_ma
               "wind_rotordiameter_max_m": "max", "wind_tiphoogte_max_m": "max", "wind_afstand_min_km": "min"}
 STATIC_RULES = {"osm_hoogspanning_afstand_min_km": "min", "osm_onderstation_aantal": "sum",
                 "osm_zonnepark_vermogen_kw": "sum", "osm_jachthaven_aantal": "sum",
-                "laad_punten_aantal": "sum", "laad_punten_snel_aantal": "sum"}
+                "laad_punten_aantal": "sum", "laad_punten_snel_aantal": "sum",
+                "osm_datacentrum_aantal": "sum", "osm_datacentrum_m2": "sum",
+                "wk_primair_lengte_m": "sum", "wk_hwbp_lengte_m": "sum", "wk_hwbp_afgerond_lengte_m": "sum",
+                "wk_norm_signalering_jaar": "max", "wk_norm_ondergrens_jaar": "max",
+                "wk_hwbp_realisatie_start": "min", "wk_hwbp_realisatie_eind": "max",
+                "net_afname_kleur_max": "max", "net_opwek_kleur_max": "max",
+                "bodembeweging_min_mm_jaar": "min"}
+
+
+# string columns whose coarse value is the worst (highest-ranked) child value
+RANKED = {"wk_lbo1_oordeel": ["A+", "A", "B", "C", "D"]}
 
 
 def log(*a):
@@ -76,6 +86,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
     companions = {c for cs in COMPANIONS.values() for c in cs}
     if name in companions:
         return "companion", None
+    if name in RANKED:
+        return "worst", None
     if t == "string":
         return "mode", None
     if t == "bool":
@@ -86,6 +98,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return WIND_RULES[name], None
     if name in STATIC_RULES:
         return STATIC_RULES[name], None
+    if name.startswith("regen_") and "_max_" in name:
+        return "max", None
     if name.startswith(("vee_", "nh3_")):
         return "sum", None
     if name in ("kdw_habitat_m2", "kdw_overschreden_m2"):
@@ -144,6 +158,9 @@ def build_sql(columns: dict, src: str) -> tuple[str, dict]:
             sel.append(f"sum({c}) AS {c}")
         elif rule in ("min", "max"):
             sel.append(f"{rule}({c}) AS {c}")
+        elif rule == "worst":
+            rank = " ".join(f"WHEN '{v}' THEN {i}" for i, v in enumerate(RANKED[name]))
+            sel.append(f"arg_max({c}, CASE {c} {rank} END) AS {c}")
         elif rule == "any":
             sel.append(f"bool_or({c}) AS {c}")
         elif rule == "wmean":

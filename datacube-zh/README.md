@@ -131,6 +131,11 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5q | national wind per year (`datacube_<region>_jaar.parquet`, not per cell) | KNMI daily station data FG/FHX/DDVEC | `prepare/knmi_wind.py`: fixed station set, yearly means, direction shares, calm/storm days | done |
 | 5r | permit-holder housing per gemeente and year (`datacube_<region>_gemeente.parquet`, not per cell) | JenV/COA "Overzicht huisvesting vergunninghouders 1 januari" PDFs (open.overheid.nl) | `prepare/vergunninghouders.py download`, then build: parse, map to 2024 gemeenten | done |
 | 5s | COA reception capacity per gemeente and snapshot date 2022-2026 (`datacube_<region>_coa.parquet`) | coa.nl location map (Wayback copies) + location export (July 2026) | `prepare/coa.py download`, then build: points -> hex -> 2024 gemeente | done |
+| 5t | primary flood defences: norms, LBO-1 assessment, HWBP reinforcements (`wk_*`, static) + whole lines (`datacube_<region>_waterkeringen.parquet`) | RWS Waterveiligheidsportaal WFS (CC0) | `prepare/waterkeringen.py download`, then build: exact line x hex lengths in RD | done |
+| 5u | subsidence: measured InSAR mm/year (`bodembeweging_*`) and forecast 2020-2050 in m (`bodemdaling_2020_2050_*`), static | Klimaateffectatlas WFS/WCS (CC BY 4.0) | `config/static.toml`; nl: `datacube-zh static --only ...` + `prepare/static_merge.py` | done |
+| 5v | data centres: OSM locations per cell (`osm_datacentrum_*`) + RVO reports per gemeente and year (`datacube_<region>_datacentra.parquet`) | OSM (ODbL); RVO energy-efficiency reports, data year 2025 | `prepare/osm_extra.py`; `prepare/datacentra.py` | done |
+| 5w | grid congestion: colour per cell (`net_*`, snapshot), supply areas in MW (`_netgebieden`), history per gemeente (`_netcongestie`) | Netbeheer Nederland capaciteitskaart CSVs; Internet Archive copies 2023-2024; CBS PC6 2024 | `prepare/netcongestie.py download` (monthly timer), then build | done |
+| 5x | water depth after a cloudburst (`regen_70mm_1h_*`, static) | Klimaateffectatlas 2026, 0.5 m COG tiles (CC BY 4.0) | `prepare/regenwater.py`: full resolution -> 10 m blocks -> hex index raster, resumable | running |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -510,6 +515,33 @@ Points go to the cube's static 2024 gemeente via their hex. Side table `datacube
 CAPACITY, not occupancy. Missing: crisis emergency reception run by gemeenten and Ukrainian reception (not COA), and
 2018-2021 (archived copies before 2022 have names only). Map pins and export addresses can fall in neighbouring
 gemeenten (2 of ~260: Horst aan de Maas / Peel en Maas, Laren / Eemnes). No licence is stated on coa.nl.
+
+## Climate and energy layers for cube-sim (2026-10-18)
+
+- **Primary flood defences** (`prepare/waterkeringen.py`): the 237 dyke sections (dijktrajecten) with their legal
+  standard (signaleringswaarde / ondergrens as return period N), the LBO-1 safety verdict (A+ .. D), current HWBP
+  projects (5,854 stretches, 176 projects, planned construction years) and completed ones (1,026 stretches). Per cell:
+  exact lengths and the strictest norm / worst verdict / earliest-latest planned years; coarsen keeps the worst
+  verdict (ranked, not alphabetical). 3,474 km of sections on the nl grid, 1,516 km in current HWBP projects.
+- **Subsidence** (`config/static.toml`): measured InSAR ground motion on the Klimaateffectatlas hexagons (1.44 M,
+  mm/year, negative = sinking; only where there are reflectors; source period not stated by KEA, the province's
+  identical maps use EGMS 2019-2023) area-weighted per cell, plus the Deltares forecast of cumulative subsidence
+  2020-2050 (100 m, laag/hoog). The Bodemdalingskaart 2.0 itself is not downloadable any more. A full nl `datacube-zh
+  static` run no longer fits in 12 GB: aggregate new layers with `--only` and merge them with `prepare/static_merge.py`.
+- **Data centres**: OSM `telecom=data_center` / `building=data_center` per cell (campus + building outlines merged:
+  ~100 sites, 216 ha); RVO's EED reports (104 centres >= 500 kW, data year 2025, IT power for 48, energy for 47 =
+  2,380 GWh) per gemeente and year by start year (`datacube_<region>_datacentra.parquet`; closed centres never
+  reported, so early years are a lower bound). Names are not matched to OSM (RVO names like "AMS01" are ambiguous).
+- **Grid congestion** (`prepare/netcongestie.py`): the operators' colour per 6-digit postcode for offtake and feed-in
+  (October 2026), sampled per cell at the 7 res-10 child centres through the CBS PC6 polygons (2024 v2); supply areas
+  with MW figures in `datacube_<region>_netgebieden.parquet`; per gemeente and snapshot the share of postcodes per
+  colour, from 7 Internet Archive copies (2023-03 .. 2024-05; national only in 2024-01 and 2024-03, otherwise 15-20%
+  of postcodes: compare via `net_pc6_gemeld`) and own downloads (monthly systemd timer `datacube-netcongestie.timer`).
+  Red offtake postcodes: 48% (2024-01) -> 55% (2026-10). No licence stated.
+- **Cloudburst water depth** (`prepare/regenwater.py`): Klimaateffectatlas 70 mm in 1 hour, read at full 0.5 m
+  resolution (the overviews average water into dry pixels, +15% mean depth) tile by tile, reduced to 10 m blocks and
+  assigned with the 10 m hex index raster; checked against a direct per-pixel computation on one cell (mean 0.0239 vs
+  0.0241 m, same max). Other scenarios: 90mm_1h, 155mm_2h (`--scenario`), not built.
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 

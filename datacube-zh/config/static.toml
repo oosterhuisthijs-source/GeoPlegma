@@ -287,3 +287,51 @@ layers = ["ms:soortendiversiteit_rl"]
 sql = """SELECT geom, CAST(overall_class AS REAL) AS klasse FROM "ms:soortendiversiteit_rl" """
 agg = "numeric"
 outputs = [{ column = "klasse", agg = "area_weighted_average", name = "ndff_soortendiversiteit_rl_klasse" }]
+
+# --- Subsidence (Klimaateffectatlas, CC BY 4.0) ---------------------------------
+# Forecast: Deltares, cumulative subsidence 2020-2050 in m (100 m grid), mild (laag) and strong (hoog) scenario.
+# Nodata is 1.79e308 but not declared in the file (valid_max drops it); -1 marks pixels without a value.
+
+[[raster]]
+name = "bodemdaling_2020_2050_laag_m"
+description = "Verwachte bodemdaling 2020-2050, laag (mild) scenario (m), Deltares via Klimaateffectatlas, 100 m"
+unit = "m"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__bodemdaling_2020_2050laag"
+agg = "mean"
+nodata = [-1]
+valid_max = 100
+
+[[raster]]
+name = "bodemdaling_2020_2050_hoog_m"
+description = "Verwachte bodemdaling 2020-2050, hoog scenario (m), Deltares via Klimaateffectatlas, 100 m"
+unit = "m"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__bodemdaling_2020_2050hoog"
+agg = "mean"
+nodata = [-1]
+valid_max = 100
+
+# Measured: InSAR ground motion on ~100 m hexagons (only where there are InSAR points: mostly built-up land and
+# infrastructure, little on grass), snelheid in mm/year, negative = sinking. KEA does not state the InSAR source or
+# period (the province's identical maps use EGMS 2019-2023). totaal = all movement, ondiep = the shallow part.
+[[vector]]
+name = "bodemdaling_gemeten"
+description = "Gemeten bodembeweging (mm/jaar, negatief = daling), InSAR-zeshoeken van de Klimaateffectatlas (nl_bodemdaling_totaal_v20260623)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:nl_bodemdaling_totaal_v20260623"]
+agg = "numeric"
+outputs = [
+  { column = "snelheid", agg = "area_weighted_average", name = "bodembeweging_mm_jaar", unit = "mm/jaar" },
+  { column = "snelheid", agg = "min", name = "bodembeweging_min_mm_jaar", unit = "mm/jaar" },
+]
+
+[[vector]]
+name = "bodemdaling_gemeten_ondiep"
+description = "Gemeten ondiepe bodembeweging (mm/jaar, negatief = daling), InSAR-zeshoeken van de Klimaateffectatlas (nl_bodemdaling_ondiep_v20260623)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:nl_bodemdaling_ondiep_v20260623"]
+agg = "numeric"
+outputs = [
+  { column = "snelheid", agg = "area_weighted_average", name = "bodembeweging_ondiep_mm_jaar", unit = "mm/jaar" },
+]

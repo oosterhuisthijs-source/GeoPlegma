@@ -16,6 +16,8 @@ What is read, and why only this:
 - power=plant + plant:source=solar (areas) with plant:output:electricity (MW/MWp). About half the parks
   have no power tag; they get their area x the median kW/ha of the tagged parks.
 - leisure=marina (nodes and areas).
+- telecom=data_center or building=data_center (nodes and areas; ~170 in NL): no power or opening year in OSM
+  (those come per gemeente from RVO, prepare/datacentra.py).
 
 Writes <data>/<work>/layers/osm_extra.parquet, per hex:
   osm_hoogspanning_lengte_m         overhead line >= 50 kV inside the cell (m; each way once)
@@ -24,6 +26,8 @@ Writes <data>/<work>/layers/osm_extra.parquet, per hex:
   osm_onderstation_aantal           substations >= 50 kV whose centre lies in the cell
   osm_zonnepark_vermogen_kw         rated power of solar parks, split over cells by area share
   osm_jachthaven_aantal             marinas whose centre lies in the cell
+  osm_datacentrum_aantal            data centres whose centre lies in the cell (touching/overlapping areas = one)
+  osm_datacentrum_m2                data centre footprint inside the cell (merged areas, m2)
 
 Lengths and areas are exact (geometries and hex boundaries intersected in RD, EPSG:28992).
 
@@ -52,7 +56,8 @@ import region as regions  # noqa: E402
 H3_RES = 9
 SAMPLE_M = 10  # spacing of the points that find a line's candidate cells (+ their neighbours)
 MIN_KV = 50
-TAGS = [("power", "line"), ("power", "cable"), ("power", "substation"), ("power", "plant"), ("leisure", "marina")]
+TAGS = [("power", "line"), ("power", "cable"), ("power", "substation"), ("power", "plant"), ("leisure", "marina"),
+        ("telecom", "data_center"), ("building", "data_center")]
 
 
 def log(*a):
@@ -83,6 +88,8 @@ def kind_of(t: dict) -> str | None:
         return "onderstation" if (kv and kv >= MIN_KV) or t.get("substation") == "transmission" else None
     if p == "plant":
         return "zonnepark" if t.get("plant:source") == "solar" else None
+    if t.get("telecom") == "data_center" or t.get("building") == "data_center":
+        return "datacentrum"
     return "jachthaven" if t.get("leisure") == "marina" else None
 
 
@@ -113,7 +120,8 @@ def read(pbf: Path):
     for n in fp:
         loc[n.id] = (n.location.lon, n.location.lat)
     for n in osmium.FileProcessor(str(pbf), osmium.osm.NODE).with_filter(
-            osmium.filter.TagFilter(("power", "substation"), ("leisure", "marina"))):
+            osmium.filter.TagFilter(("power", "substation"), ("leisure", "marina"), ("telecom", "data_center"),
+                                    ("building", "data_center"))):
         kind = kind_of(dict(n.tags))
         if kind:
             feats.append({"kind": kind, "type": "n", "tags": dict(n.tags), "point": (n.location.lon, n.location.lat)})
@@ -196,7 +204,8 @@ def main():
         return index.get(h3.latlng_to_cell(p.y, p.x, H3_RES))
 
     cols = {k: np.zeros(len(ids)) for k in ("osm_hoogspanning_lengte_m", "osm_hoogspanning_kabel_lengte_m",
-                                            "osm_onderstation_aantal", "osm_zonnepark_vermogen_kw", "osm_jachthaven_aantal")}
+                                            "osm_onderstation_aantal", "osm_zonnepark_vermogen_kw", "osm_jachthaven_aantal",
+                                            "osm_datacentrum_aantal", "osm_datacentrum_m2")}
 
     # lines and cables: exact length per cell
     for kind, col in (("lijn", "osm_hoogspanning_lengte_m"), ("kabel", "osm_hoogspanning_kabel_lengte_m")):
@@ -220,6 +229,23 @@ def main():
                 cols["osm_zonnepark_vermogen_kw"][index[c]] += kw
                 estimated += 0 if f["kw"] else kw
 
+    # data centres: a campus and its buildings are often both tagged, so the areas are merged first; each merged
+    # area counts once (at its centre), points count only outside every area; footprint = merged area per cell
+    dc = by_kind.get("datacentrum", [])
+    merged_rd = shapely.union_all([f["rd"] for f in dc if f["rd"].area > 0])
+    for part in getattr(merged_rd, "geoms", [merged_rd]):
+        geo = shapely.transform(part, lambda xy: np.column_stack(to_wgs.transform(xy[:, 0], xy[:, 1])))
+        for c in area_cells(geo):
+            cols["osm_datacentrum_m2"][index[c]] += shapely.intersection(part, hexagon(c)).area
+        k = centre_cell({"geo": geo})
+        if k is not None:
+            cols["osm_datacentrum_aantal"][k] += 1
+    for f in dc:
+        if f["rd"].area == 0 and not merged_rd.contains(f["rd"]):
+            k = centre_cell(f)
+            if k is not None:
+                cols["osm_datacentrum_aantal"][k] += 1
+
     for kind, col in (("onderstation", "osm_onderstation_aantal"), ("jachthaven", "osm_jachthaven_aantal")):
         for f in by_kind.get(kind, []):
             k = centre_cell(f)
@@ -242,11 +268,14 @@ def main():
         "osm_onderstation_aantal": pa.array(cols["osm_onderstation_aantal"].astype(np.int32)),
         "osm_zonnepark_vermogen_kw": np.round(cols["osm_zonnepark_vermogen_kw"], 1),
         "osm_jachthaven_aantal": pa.array(cols["osm_jachthaven_aantal"].astype(np.int32)),
+        "osm_datacentrum_aantal": pa.array(cols["osm_datacentrum_aantal"].astype(np.int32)),
+        "osm_datacentrum_m2": np.round(cols["osm_datacentrum_m2"], 1),
     }).replace_schema_metadata({"datacube": json.dumps(source)})
     pq.write_table(per_hex, work / "layers/osm_extra.parquet", compression="zstd")
 
     log(f"overhead {cols['osm_hoogspanning_lengte_m'].sum() / 1000:.0f} km, cable "
-        f"{cols['osm_hoogspanning_kabel_lengte_m'].sum() / 1000:.0f} km, substations "
+        f"{cols['osm_hoogspanning_kabel_lengte_m'].sum() / 1000:.0f} km, data centres "
+        f"{int(cols['osm_datacentrum_aantal'].sum())} ({cols['osm_datacentrum_m2'].sum() / 1e4:.0f} ha), substations "
         f"{int(cols['osm_onderstation_aantal'].sum())}, marinas {int(cols['osm_jachthaven_aantal'].sum())}")
     log(f"solar parks {cols['osm_zonnepark_vermogen_kw'].sum() / 1000:.0f} MW ({estimated / 1000:.0f} MW estimated at "
         f"{density * 1e4:.0f} kW/ha; {sum(1 for f in parks if f['kw'])} of {len(parks)} parks in NL have a power tag)")
