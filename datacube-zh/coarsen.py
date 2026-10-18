@@ -244,6 +244,7 @@ def main():
                 how = {"sum": "som van de res-9 cellen", "min": "minimum van de res-9 cellen",
                        "max": "maximum van de res-9 cellen", "any": "waar als een res-9 cel waar is",
                        "mode": "oppervlaktegewogen meest voorkomende waarde van de res-9 cellen",
+                       "worst": "slechtste categorie van de res-9 cellen (A+ < A < B < C < D)",
                        "companion": "hoort bij de meest voorkomende waarde van de sleutelkolom",
                        "wmean": f"gewogen gemiddelde van de res-9 cellen (gewicht: {wl})"}[rule]
                 manifest[c] = {**{k2: v for k2, v in meta.items() if k2 != "non_null_share_per_year"},
