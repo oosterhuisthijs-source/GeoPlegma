@@ -129,6 +129,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5o | ammonia emissions per cell (`nh3_*`), 2019-2024 | RIVM Emissieregistratie, ammoniak per subsector, 1x1 km | `prepare/nh3.py`: square split over its hexes by area | done |
 | 5p | measured ammonia (`man_*`), yearly | RIVM Meetnet Ammoniak Nederland (man.rivm.nl) | `prepare/man.py`: area mean over the area polygon, extra points in their own cell | done |
 | 5q | national wind per year (`datacube_<region>_jaar.parquet`, not per cell) | KNMI daily station data FG/FHX/DDVEC | `prepare/knmi_wind.py`: fixed station set, yearly means, direction shares, calm/storm days | done |
+| 5r | permit-holder housing per gemeente and year (`datacube_<region>_gemeente.parquet`, not per cell) | JenV/COA "Overzicht huisvesting vergunninghouders 1 januari" PDFs (open.overheid.nl) | `prepare/vergunninghouders.py download`, then build: parse, map to 2024 gemeenten | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -475,6 +476,25 @@ complete (>= 95% of days) in every year 2018-2025 (39 of 48, coast and IJsselmee
 make fake jumps: mean speed, share of station-days per 45-degree direction sector (`wind_zw_w_aandeel`,
 `wind_o_no_aandeel`), calm days (station mean < 2 m/s) and storm days (hourly mean >= 20.8 m/s, Beaufort 9, at one or
 more stations). An upwind-emission index per cell is not built: only if a consumer finds a signal worth refining.
+
+## Permit-holder housing per gemeente (`prepare/vergunninghouders.py`)
+
+For cube-sim's asylum card. The ministry gives every gemeente a target (taakstelling) per half year for housing
+permit holders (statushouders), proportional to population; COA tracks what each gemeente actually housed. Source:
+the monthly PDF "Overzicht huisvesting vergunninghouders" (JenV/COA, open.overheid.nl, scripted search + download);
+the 1 January file of year Y+1 closes year Y in year Y's gemeenten. Three table layouts (2018; 2019-2022; 2023 on,
+with a corrections column), each row checked on its own sums. Unlisted corrections (a 1 July stand that isn't
+begin + target - housed; five 2021 year-end stands, Rotterdam -41) are kept as published and counted in
+`vh_correcties`, so `vh_stand_eind = vh_stand_begin + vh_taakstelling + vh_correcties - vh_realisatie` holds on
+every row. Name differences (2018 spellings, typos in the 2019 and 2023 files, province suffixes) are aliased.
+
+Not per cell: a gemeente total spread over hexes would invent detail. So it is a side table
+`datacube_<region>_gemeente.parquet` (`year_int`, `gemeentecode`, `gemeentenaam`, `vh_*`), keyed on the cube's own
+static gemeenten (Wijk- en Buurtkaart 2024): earlier gemeenten map onto their 2024 gemeente by hex centres, weighted
+by that year's inhabitants when one was split (Haaren 2021), so national totals are exact (2018 target 23,880; 2025
+28,000 = 15,000 + 13,000 as in the ministry's letter). Stand: + = backlog. Researched but not built: COA reception
+locations (no official series; only Wayback snapshots of coa.nl, coordinates + capacity from mid-2022, names only
+before), asylum seekers in reception per gemeente (COA occupancy is national only, CBS has no gemeente table).
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 

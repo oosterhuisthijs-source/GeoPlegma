@@ -16,6 +16,8 @@ Writes, under the region's out directory (config/regions.toml):
                                when prepared; the cube carries their lengths per cell (osm_*_lengte_m)
 - datacube_<region>_jaar.parquet   national values per year, not per cell (prepare/knmi_wind.py: wind),
                                when prepared; same file for every region
+- datacube_<region>_gemeente.parquet   values per gemeente (2024 borders, join on gemeentecode) and year, not per
+                               cell (prepare/vergunninghouders.py), when prepared; zh: its gemeenten only
 - volledige_tijdreeks_delta/   (zh only) drop-in replacement for ruimtelijke-assistent:
                                the original's exact columns, order and types,
                                CBS columns min-max scaled to 0-255 over all years
@@ -731,6 +733,9 @@ def main():
     if (work / "layers/knmi_wind_jaar.parquet").exists():
         shutil.copy2(work / "layers/knmi_wind_jaar.parquet", out / f"{name}_jaar.parquet")
         log(f"wrote {out / f'{name}_jaar.parquet'} (national values per year)")
+    if (work / "layers/vergunninghouders_gemeente.parquet").exists():
+        shutil.copy2(work / "layers/vergunninghouders_gemeente.parquet", out / f"{name}_gemeente.parquet")
+        log(f"wrote {out / f'{name}_gemeente.parquet'} (values per gemeente and year)")
 
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
@@ -794,6 +799,12 @@ def main_slice(args, reg: dict, parent: dict, data: Path, work: Path, out: Path,
         slice_lines(parent_out / f"{pname}_lijnen.parquet", set(grid["h3_id"].to_pylist()), out / f"{name}_lijnen.parquet")
     if (parent_out / f"{pname}_jaar.parquet").exists():
         shutil.copy2(parent_out / f"{pname}_jaar.parquet", out / f"{name}_jaar.parquet")  # national: same file
+    if (parent_out / f"{pname}_gemeente.parquet").exists():
+        mine = set(pq.read_table(out / f"{name}.parquet", columns=["gemeentecode"])["gemeentecode"].to_pylist())
+        g = pq.read_table(parent_out / f"{pname}_gemeente.parquet")
+        g = g.filter(pa.array([c in mine for c in g["gemeentecode"].to_pylist()]))
+        pq.write_table(g, out / f"{name}_gemeente.parquet")
+        log(f"wrote {out / f'{name}_gemeente.parquet'} ({len(mine - {None})} gemeenten)")
 
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
