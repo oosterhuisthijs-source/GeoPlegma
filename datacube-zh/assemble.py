@@ -474,7 +474,7 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                 info[f"{c}_{agg}"] = (s, u, f"{how}; leeg in {gap}: CBS publiceert deze afstand dan (nog) niet")
     for layer in static.get("raster", []):
         src = layer.get("description", "")
-        info[layer["name"]] = (f"{src} [{layer['wcs']} {layer['coverage']}]", None,
+        info[layer["name"]] = (f"{src} [{layer['wcs']} {layer['coverage']}]", layer.get("unit"),
                                f"{layer['agg']} over alle pixels in de cel (pixelcentrum -> H3 via geoplegma zone_from_point)")
     numeric_how = {
         "sum": "som, verdeeld naar het aandeel van elk object dat in de cel ligt",

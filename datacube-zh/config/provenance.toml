@@ -291,7 +291,7 @@ time = "static"
 columns = ["hitte", "waterberging"]
 tier = "modelled"
 native_resolution = "RIVM Atlas Natuurlijk Kapitaal raster"
-reference_period = "2022 (hitte); edition of the map (waterberging)"
+reference_period = "2022 (hitte); groundwater 1998-2006, map 2014 (waterberging, mm)"
 time = "static"
 
 [[rule]]

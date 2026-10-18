@@ -28,6 +28,7 @@
 [[raster]]
 name = "groundheight"
 description = "Maaiveldhoogte t.o.v. NAP (m), AHN4 DTM 0.5m resampled to 5m"
+unit = "m NAP"
 wcs = "https://service.pdok.nl/rws/ahn/wcs/v1_0"
 coverage = "dtm_05m"
 resolution = 5
@@ -39,6 +40,7 @@ nodata = [3.4028234663852886e38, -9999]
 [[raster]]
 name = "flooddepth_1"
 description = "Maximale waterdiepte (m), LIWO kaart 1 (grote kans, 1/30 per jaar)"
+unit = "m"
 wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
 coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart1"
 resolution = 10
@@ -50,6 +52,7 @@ valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; d
 [[raster]]
 name = "flooddepth_2"
 description = "Maximale waterdiepte (m), LIWO kaart 2 (middelgrote kans, 1/300 per jaar)"
+unit = "m"
 wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
 coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart2"
 resolution = 10
@@ -61,6 +64,7 @@ valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; d
 [[raster]]
 name = "flooddepth_3"
 description = "Maximale waterdiepte (m), LIWO kaart 3 (kleine kans, 1/3.000 per jaar)"
+unit = "m"
 wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
 coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart3"
 resolution = 10
@@ -72,6 +76,7 @@ valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; d
 [[raster]]
 name = "flooddepth_4"
 description = "Maximale waterdiepte (m), LIWO kaart 4 (zeer kleine kans, 1/30.000 per jaar)"
+unit = "m"
 wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
 coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart4"
 resolution = 10
@@ -83,6 +88,7 @@ valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; d
 [[raster]]
 name = "flooddepth_5"
 description = "Maximale waterdiepte (m), LIWO kaart 5 (extreem kleine kans, 1/300.000 per jaar)"
+unit = "m"
 wcs = "https://basisinformatie-overstromingen.nl/geoserver/ows"
 coverage = "LIWO_Basis__MaximaleWaterdiepteNederland_Kaart5"
 resolution = 10
@@ -96,6 +102,7 @@ valid_max = 100.0  # LIWO tile near Den Helder has junk values 998 to 1.5e8 m; d
 [[raster]]
 name = "geluid_lden"
 description = "Geluidbelasting alle bronnen samen, Lden dB (RIVM, 2020)"
+unit = "dB Lden"
 wcs = "https://data.rivm.nl/geo/alo/wcs"
 coverage = "alo__rivm_20220601_Geluid_lden_allebronnen_2020"
 agg = "mean"
@@ -106,6 +113,7 @@ nodata = [-9999, -999, 0]
 [[raster]]
 name = "geluid_lden_2022"
 description = "Geluidbelasting alle bronnen samen, Lden dB (RIVM, 2022; editie 2025-08-01)"
+unit = "dB Lden"
 wcs = "https://data.rivm.nl/geo/alo/wcs"
 coverage = "alo__rivm_20250801_Geluid_lden_allebronnen_2022"
 agg = "mean"
@@ -114,6 +122,7 @@ nodata = [-9999, -999, 0]
 [[raster]]
 name = "hitte"
 description = "Stedelijk hitte-eilandeffect, gemiddelde extra temperatuur (graden C) (RIVM ANK, 2022)"
+unit = "graden C"
 wcs = "https://data.rivm.nl/geo/ank/wcs"
 coverage = "ank__Stedelijk_hitte_eiland_effect_01062022_v2"
 agg = "mean"
@@ -122,6 +131,7 @@ nodata = [-9999]
 [[raster]]
 name = "groenklasse"
 description = "Gemiddelde groenklasse 1-4 (RIVM groenkaart 2022, 5m resampled to 10m)"
+unit = "klasse 1-4"
 wcs = "https://data.rivm.nl/geo/alo/wcs"
 coverage = "alo__rivm_20240101_groenkaart_2022"
 resolution = 10
@@ -130,7 +140,8 @@ nodata = [-9999, 255]
 
 [[raster]]
 name = "waterberging"
-description = "Waterberging grondwater (RIVM ANK d15)"
+description = "Waterbergend vermogen ondergrond: mm water die de bodem nog kan bergen tot maaiveld (RIVM ANK d15; (maaiveld - GHG) x porositeit 0,25 x landfractie per 250m-modelcel, GHG uit NHI 3.0.2 voor 1998-2006; kaart 2014, indicatief)"
+unit = "mm"
 wcs = "https://data.rivm.nl/geo/ank/wcs"
 coverage = "ank__d15_waterberging_grondwater"
 agg = "mean"

@@ -130,7 +130,7 @@ note = "Latest OSM extract repeated in every year (no history). Metres of line i
 name = "Heat, green, water storage, flooding, ground level"
 use = ["hitte", "groenklasse", "waterberging", "flooddepth_1", "groundheight"]
 trend = "no"
-note = "Static maps: starting conditions, not something that changes with the years in the cube."
+note = "Static maps: starting conditions, not something that changes with the years in the cube. waterberging = mm of water the soil can still store before it is saturated to ground level ((ground level - mean highest groundwater) x porosity 0.25 x land fraction, RIVM ANK d15, 250 m model cells, groundwater of 1998-2006, map 2014, indicative). Median ~185 mm; > ~2,000 mm only on high ground with deep groundwater (Veluwe, South Limburg): read that as plenty."
 
 [[concept]]
 name = "Safety hazards"
@@ -285,7 +285,7 @@ columns = ["aantal_*_sum", "bijgeschat_*_sum", "cbs_coverage", "percentage_*_are
            "gemiddelde_woz_waarde_woning_area_weighted_average"]
 years = [2025]
 kind = "preliminary"
-note = "CBS 2025 is the preliminary v1: more suppressed squares, births not published, ~30% more squares listed."
+note = "CBS 2025 is the preliminary v1: inhabitants suppressed in 249k squares (2024 v2: 3k; 48k of them had 306k inhabitants in 2024), homes in 303k (2024: 103k). Suppressed squares add 0 to the *_sum columns, so small rural cells drop 20-40% while the national total moves -0.5%; read 2025 per cell as a lower bound. Births not published, ~30% more squares listed. To be replaced by v2 when CBS publishes it."
 
 [[break]]
 columns = ["wb_gemiddeld_inkomen_per_inwoner*", "wb_gemiddeld_inkomen_per_inkomensontvanger*",
