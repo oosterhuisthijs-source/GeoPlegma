@@ -198,10 +198,11 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.18, `datacube_nl` 2026.10.18
-(metadata only: static raster units, `waterberging` = mm; sharper CBS 2025 v1 break note: suppressed squares add 0,
-rebuild when CBS publishes 2025 v2). Open: asylum reception data for the sim (COA locations, occupancy per gemeente,
-taakstelling vergunninghouders; sources being researched). Open: NDVI (`s2`) wiring
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.18.2, `datacube_nl` 2026.10.18.2
+(side table `datacube_<region>_gemeente.parquet`: permit-holder housing per gemeente/year, `prepare/vergunninghouders.py`).
+Open: COA reception locations (Wayback snapshots only, 2022-2025 with coordinates; offered to the sim, not built);
+rebuild CBS 2025 when v2 appears. Before: zh/nl 2026.10.18 (static raster units, `waterberging` = mm; sharper CBS 2025
+v1 break note: suppressed squares add 0). Open: NDVI (`s2`) wiring
 + release once Earth Engine delivers 2022-2025 (method validated on 2018-2021 after the LGN water-mask fix);
 upwind index parked (sim v4: no signal); Lbv buy-outs per gemeente (sim, low priority); % aardgaswoningen (2024
 buurt map only, offered); analyst contract file missing. Before: zh .17.8 / nl .17.7 (RIVM deposition 2025 = provisional
