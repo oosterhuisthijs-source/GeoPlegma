@@ -13,6 +13,7 @@ Writes <data>/releases/datacube_<region>/<version>/:
 - datacube_<region>_lijnen.parquet              OSM motorways/railways as whole lines (GeoParquet), when built
 - datacube_<region>_jaar.parquet                national values per year (wind), when built
 - datacube_<region>_gemeente.parquet            values per gemeente and year (permit-holder housing), when built
+- datacube_<region>_coa.parquet                 COA reception capacity per gemeente and snapshot date, when built
 - manifest.json   version, git commit, assembly time, rows/columns/years, sources per column group,
                   sha256 + size of every file, contract results, notes
 - stats.json      per column and year: non-null share, min, max, mean (numeric) / distinct (string)
@@ -393,6 +394,8 @@ def main():
         sources.append(out / f"{name}_jaar.parquet")  # national per-year table (prepare/knmi_wind.py)
     if (out / f"{name}_gemeente.parquet").exists():
         sources.append(out / f"{name}_gemeente.parquet")  # per gemeente and year (prepare/vergunninghouders.py)
+    if (out / f"{name}_coa.parquet").exists():
+        sources.append(out / f"{name}_coa.parquet")  # per gemeente and snapshot date (prepare/coa.py)
 
     root = data / "releases" / name
     dest = root / args.version

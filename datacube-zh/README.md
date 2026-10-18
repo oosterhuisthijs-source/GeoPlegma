@@ -130,6 +130,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5p | measured ammonia (`man_*`), yearly | RIVM Meetnet Ammoniak Nederland (man.rivm.nl) | `prepare/man.py`: area mean over the area polygon, extra points in their own cell | done |
 | 5q | national wind per year (`datacube_<region>_jaar.parquet`, not per cell) | KNMI daily station data FG/FHX/DDVEC | `prepare/knmi_wind.py`: fixed station set, yearly means, direction shares, calm/storm days | done |
 | 5r | permit-holder housing per gemeente and year (`datacube_<region>_gemeente.parquet`, not per cell) | JenV/COA "Overzicht huisvesting vergunninghouders 1 januari" PDFs (open.overheid.nl) | `prepare/vergunninghouders.py download`, then build: parse, map to 2024 gemeenten | done |
+| 5s | COA reception capacity per gemeente and snapshot date 2022-2026 (`datacube_<region>_coa.parquet`) | coa.nl location map (Wayback copies) + location export (July 2026) | `prepare/coa.py download`, then build: points -> hex -> 2024 gemeente | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -495,6 +496,20 @@ by that year's inhabitants when one was split (Haaren 2021), so national totals 
 28,000 = 15,000 + 13,000 as in the ministry's letter). Stand: + = backlog. Researched but not built: COA reception
 locations (no official series; only Wayback snapshots of coa.nl, coordinates + capacity from mid-2022, names only
 before), asylum seekers in reception per gemeente (COA occupancy is national only, CBS has no gemeente table).
+
+## COA reception capacity per gemeente (`prepare/coa.py`)
+
+For cube-sim's asylum card (independent fairness check). COA publishes no dated series of its locations; the
+Internet Archive holds ~30 copies (one per month at most) of COA's location map from January 2022 (88 locations,
+34,907 places) to May 2026 (258, 69,840), each embedding every location as a point with "<n> opvangplaatsen" and a
+marker colour whose legend is in the page (oker = regulier, petrol = tijdelijk), plus one copy of the location export
+CSV (20 July 2026: 265 locations, 71,779 places, addresses placed with PDOK Locatieserver; phone/e-mail not kept).
+Points go to the cube's static 2024 gemeente via their hex. Side table `datacube_<region>_coa.parquet`: `datum`,
+`bron` (kaart/export), `gemeentecode`, `gemeentenaam`, `coa_locaties`, `coa_plaatsen`, split regulier/tijdelijk, and
+`coa_locaties_zonder_aantal` (listed without places, 1-5 per copy); every gemeente in every copy (0 = no COA location).
+CAPACITY, not occupancy. Missing: crisis emergency reception run by gemeenten and Ukrainian reception (not COA), and
+2018-2021 (archived copies before 2022 have names only). Map pins and export addresses can fall in neighbouring
+gemeenten (2 of ~260: Horst aan de Maas / Peel en Maas, Laren / Eemnes). No licence is stated on coa.nl.
 
 ## zh as a slice of nl (`slice_of` in `config/regions.toml`)
 
