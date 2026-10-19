@@ -246,8 +246,14 @@ Never edit the game repos from here:
   downloads them, then runs `prepare/s2_metrics.py` once -> `work_nl/layers/s2.parquet`. Log:
   `own_data/sources/s2_ndvi/watch.log`. It does NOT release. Next: validate (sealed share vs 3D BAG/NBBG, new
   sealing vs new BAG addresses, 2018/2022 anomaly vs KNMI deficit, green share vs groenklasse), wire `s2` into
-  assemble (YEARLY_FILES), provenance/guide/coarsen, then release. Status 2026-10-17 22:00: 2018-2021 downloaded,
-  2022-2025 queued for 20+ h; the som-scenario project is in Earth Engine's noncommercial "restricted mode".
+  assemble (YEARLY_FILES), provenance/guide/coarsen, then release. Status 2026-10-19 10:15: 2018-2024 downloaded
+  (`own_data/sources/s2_ndvi/<year>/.complete`), 2025 still RUNNING on Earth Engine (som-scenario is in the
+  noncommercial "restricted mode", so slow). The watcher died on the 2026-10-18 shutdown and was restarted
+  2026-10-19 10:12; a reboot kills it again. Pick up: `uv run datacube-zh/prepare/s2_ndvi.py status`, then check the
+  log tail. If it shows "s2_metrics.py finished with exit code 0", `work_nl/layers/s2.parquet` covers 2018-2025 and
+  the next step is validation. If the watcher is gone, restart it: `systemd-run --user --unit=datacube-ndvi-watch
+  -p WorkingDirectory=$PWD -p MemoryMax=10G -p MemorySwapMax=0 /usr/bin/bash -c "exec ~/.local/bin/uv run
+  datacube-zh/prepare/s2_ndvi.py watch >> own_data/sources/s2_ndvi/watch.log 2>&1"`.
   `s2_metrics.py` was run on 2018-2021 and validated (ad hoc): water now from LGN (the NDVI-only rule counted the
   Wadden Sea and lakes as never-green land); never-green vs 3D BAG footprint r 0.53, vs groenklasse -0.58;
   greenhouses sit in between (say so in the column text). The watcher still runs `s2_metrics.py` when all 8 are in. The NL assemble already peaks at ~12.4 GB under the 12 GB cap: raise the cap a bit
