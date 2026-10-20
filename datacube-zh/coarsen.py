@@ -52,6 +52,11 @@ COMPANIONS = {
     "bodemklasse": ["bodemnaam"],
     "code": ["naam"],
 }
+S2_WEIGHT = {"s2_niet_groen_aandeel": "s2_land_pixels", "s2_groen_aandeel": "s2_land_pixels",
+             "s2_piek_gem": "s2_land_pixels", "s2_verstening_aandeel": "s2_wissel_pixels",
+             "s2_vergroening_aandeel": "s2_wissel_pixels", "s2_zomer_gem": "s2_zomer_pixels",
+             "s2_zomer_anomalie": "s2_anomalie_pixels", "s2_helder_piek": "s2_data_pixels",
+             "s2_helder_zomer": "s2_data_pixels"}
 TESSERA_WEIGHT = {
     "tessera_pc": "tessera_pixels",
     "tessera_change_mean": "tessera_land_pixels", "tessera_change_share": "tessera_land_pixels",
@@ -114,6 +119,10 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return "min", None  # months the yearly mean rests on: the weakest child counts
     if name.startswith("osm_") and name.endswith("_lengte_m"):
         return "sum", None
+    if name.startswith("s2_"):
+        if name.endswith("pixels"):
+            return "sum", None
+        return ("wmean", S2_WEIGHT[name]) if name in S2_WEIGHT else ("wmean", "area")  # s2_water_aandeel
     if name.startswith("tessera_"):
         if name.endswith("pixels"):
             return "sum", None
@@ -266,6 +275,18 @@ def main():
                                 "reference_period": "fixed", "time": "static"})
         (out / f"{name}_r{res}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
         log(f"res {res}: {k} cells x {n // max(k, 1)} years, {ncol} columns -> {dest} ({time.time() - t0:.0f}s)")
+
+        side = out / f"{name}_s2_dekking.parquet"  # NDVI per land cover (prepare/s2_cover.py): pixel-weighted
+        if side.exists():
+            sdest = out / f"{name}_s2_dekking_r{res}.parquet"
+            means = [("s2_zomer_gem", "s2_zomer_pixels"), ("s2_zomer_gem_zuiver", "s2_zomer_pixels_zuiver"),
+                     ("s2_piek_gem", "s2_land_pixels"), ("s2_zomer_anomalie", "s2_anomalie_pixels")]
+            sel = ", ".join(f"round(sum({m} * {w}) / nullif(sum(CASE WHEN {m} IS NOT NULL THEN {w} END), 0), 4) AS {m}, "
+                            f"sum({w})::INTEGER AS {w}" for m, w in means)
+            con.execute(f"""COPY (SELECT p.parent AS h3_id, s.year_int, s.groep, {sel}
+                FROM '{side}' s JOIN pmap p USING (h3_id) GROUP BY 1, 2, 3 ORDER BY 1, 2, 3)
+                TO '{sdest}' (FORMAT parquet, COMPRESSION zstd)""")
+            log(f"res {res}: -> {sdest} ({con.sql(f'SELECT count(*) FROM {chr(39)}{sdest}{chr(39)}').fetchone()[0]} rows)")
 
 
 if __name__ == "__main__":

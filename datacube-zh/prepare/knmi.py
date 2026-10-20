@@ -13,7 +13,7 @@ Source: KNMI Data Platform (CC BY 4.0), daily grids on the KNMI RD grid (1 km, 3
 
 Two steps:
 
-  knmi.py download [--years 2018-2025]   fetch the daily files to <data>/sources/knmi/<dataset>/ (shared by
+  knmi.py download [--years 2017-2025]   fetch the daily files to <data>/sources/knmi/<dataset>/ (shared by
                                          all regions; resumable, backs off on the API's rate limit). Uses
                                          $KNMI_API_KEY or ~/.config/knmi_api_key, else KNMI's public
                                          anonymous key (shared quota, mostly rate-limited).
@@ -32,10 +32,13 @@ along the coast, takes the nearest cell with data within 3 km):
   knmi_neerslagtekort_max_mm  largest potential precipitation deficit of the growing season: cumulative
                               (evaporation - precipitation) from 1 April, maximum up to 30 September
                               (KNMI's definition; not floored at 0, so a wet summer can be negative)
+  knmi_neerslagtekort_31aug_mm  the same cumulative deficit on 31 August (end of the NDVI summer window)
+Years before 2018 (--years 2017-2025) go to <work>/layers/knmi_voor.parquet, a side file: last summer's
+deficit for the cube's first year.
 A year with missing days gets null for the indicators of that variable (logged).
 
-Usage: uv run datacube-zh/prepare/knmi.py download [--data own_data] [--years 2018-2025]
-       uv run datacube-zh/prepare/knmi.py [--data own_data] [--region zh] [--years 2018-2025]
+Usage: uv run datacube-zh/prepare/knmi.py download [--data own_data] [--years 2017-2025]
+       uv run datacube-zh/prepare/knmi.py [--data own_data] [--region zh] [--years 2017-2025]
 """
 import argparse
 import datetime as dt
@@ -54,6 +57,7 @@ import h3
 import netCDF4
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pyproj import Transformer
 
@@ -67,11 +71,14 @@ ANON_KEY = ("eyJvcmciOiI1ZTU1NGUxOTI3NGE5NjAwMDEyYTNlYjEiLCJpZCI6IjUzYTg1ZDBhMmQ
 DATASETS = {"tg": ("Tg1", 5), "tx": ("Tx1", 2), "tn": ("Tn1", 2), "rd": ("Rd1", 5), "ev": ("EV24", 2)}
 FNAME = re.compile(r"_L3__(\d{8})T\d{6}_\d{8}T\d{6}_(\d{4})\.nc$")
 COLUMNS = ["knmi_temp_gem_c", "knmi_graaddagen", "knmi_zomerse_dagen", "knmi_tropische_dagen", "knmi_vorstdagen", "knmi_neerslag_mm",
-           "knmi_zware_neerslag_dagen", "knmi_verdamping_mm", "knmi_neerslagtekort_max_mm"]
+           "knmi_zware_neerslag_dagen", "knmi_verdamping_mm", "knmi_neerslagtekort_max_mm",
+           "knmi_neerslagtekort_31aug_mm"]
 # daily variables each indicator is computed from (a grid cell without data in any of them has no value)
 SOURCES = {"knmi_temp_gem_c": ["tg"], "knmi_graaddagen": ["tg"], "knmi_zomerse_dagen": ["tx"], "knmi_tropische_dagen": ["tx"],
            "knmi_vorstdagen": ["tn"], "knmi_neerslag_mm": ["rd"], "knmi_zware_neerslag_dagen": ["rd"],
-           "knmi_verdamping_mm": ["ev"], "knmi_neerslagtekort_max_mm": ["ev", "rd"]}
+           "knmi_verdamping_mm": ["ev"], "knmi_neerslagtekort_max_mm": ["ev", "rd"],
+           "knmi_neerslagtekort_31aug_mm": ["ev", "rd"]}
+CUBE_START = 2018  # earlier years (asked for as last summer's deficit) go to layers/knmi_voor.parquet
 
 
 def log(*a):
@@ -203,7 +210,7 @@ def main():
     ap.add_argument("step", nargs="?", choices=["download", "build"], default="build")
     ap.add_argument("--data", default="own_data")
     ap.add_argument("--region", default="zh")
-    ap.add_argument("--years", default="2018-2025")
+    ap.add_argument("--years", default="2017-2025")
     args = ap.parse_args()
     data, years = Path(args.data), parse_years(args.years)
     if args.step == "download":
@@ -243,6 +250,7 @@ def main():
             d1 = (dt.date(year, 9, 30) - dt.date(year, 1, 1)).days + 1
             deficit = np.cumsum(st["ev"][d0:d1] - st["rd"][d0:d1], axis=0)
             grids["knmi_neerslagtekort_max_mm"] = deficit.max(axis=0)
+            grids["knmi_neerslagtekort_31aug_mm"] = deficit[(dt.date(year, 8, 31) - dt.date(year, 4, 1)).days]
         # counts and nansums turn a cell without data into 0: set those back to NaN before sampling
         nodata = {v: np.isnan(a).all(axis=0) for v, a in st.items() if a is not None}
         for c, g in grids.items():
@@ -261,9 +269,12 @@ def main():
                       **{c: pa.array(np.concatenate(rows[c]), from_pandas=True) for c in COLUMNS}})
     source = {"source": "KNMI Data Platform daily 1 km grids (Tg1 v5, Tx1 v2, Tn1 v2, Rd1 v5, EV24 v2), CC BY 4.0",
               "prepared": dt.datetime.now().astimezone().isoformat(timespec="seconds")}
-    pq.write_table(table.replace_schema_metadata({"datacube": json.dumps(source)}), work / "layers/knmi.parquet",
-                   compression="zstd")
-    log(f"-> {work / 'layers/knmi.parquet'} ({table.num_rows} rows)")
+    early = pc.less(table["year_int"], CUBE_START)
+    for part, f in [(table.filter(pc.invert(early)), "knmi.parquet"), (table.filter(early), "knmi_voor.parquet")]:
+        if part.num_rows:
+            pq.write_table(part.replace_schema_metadata({"datacube": json.dumps(source)}), work / "layers" / f,
+                           compression="zstd")
+            log(f"-> {work / 'layers' / f} ({part.num_rows} rows)")
 
 
 if __name__ == "__main__":

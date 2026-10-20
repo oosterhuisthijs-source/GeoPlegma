@@ -86,7 +86,11 @@ uv run datacube-zh/prepare/tropomi.py --region zh           # TROPOMI NO2 (TEMIS
 uv run datacube-zh/prepare/kdw.py --region zh               # KDW per habitat + exceedance -> work/layers/kdw.parquet (after rivm.py)
 uv run datacube-zh/prepare/vee.py --region zh               # livestock per gemeente spread over farmland -> work/layers/vee.parquet (needs nl BRP layers)
 uv run datacube-zh/prepare/knmi.py download                 # KNMI daily grids, once for all regions (~15 h, rate-limited)
-uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knmi.parquet
+uv run datacube-zh/prepare/knmi.py --region zh              # -> work/layers/knmi.parquet (+ knmi_voor.parquet: 2017)
+uv run datacube-zh/prepare/s2_ndvi.py export                # Sentinel-2 NDVI composites on Earth Engine (nl only, days)
+uv run datacube-zh/prepare/s2_ndvi.py watch                 # download when done, then runs s2_metrics.py
+uv run datacube-zh/prepare/s2_metrics.py                    # -> work_nl/layers/s2.parquet (needs the nl hexindex raster)
+uv run datacube-zh/prepare/s2_cover.py                      # -> work_nl/layers/s2_dekking.parquet (per LGN group)
 
 # Every step takes --region (zh default, nl = Nederland; config/regions.toml):
 #   datacube-zh/prepare/cbs.sh own_data nl, ./target/release/datacube-zh --region nl grid, ...
@@ -135,7 +139,8 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5u | subsidence: measured InSAR mm/year (`bodembeweging_*`) and forecast 2020-2050 in m (`bodemdaling_2020_2050_*`), static | Klimaateffectatlas WFS/WCS (CC BY 4.0) | `config/static.toml`; nl: `datacube-zh static --only ...` + `prepare/static_merge.py` | done |
 | 5v | data centres: OSM locations per cell (`osm_datacentrum_*`) + RVO reports per gemeente and year (`datacube_<region>_datacentra.parquet`) | OSM (ODbL); RVO energy-efficiency reports, data year 2025 | `prepare/osm_extra.py`; `prepare/datacentra.py` | done |
 | 5w | grid congestion: colour per cell (`net_*`, snapshot), supply areas in MW (`_netgebieden`), history per gemeente (`_netcongestie`) | Netbeheer Nederland capaciteitskaart CSVs; Internet Archive copies 2023-2024; CBS PC6 2024 | `prepare/netcongestie.py download` (monthly timer), then build | done |
-| 5x | water depth after a cloudburst (`regen_70mm_1h_*`, static) | Klimaateffectatlas 2026, 0.5 m COG tiles (CC BY 4.0) | `prepare/regenwater.py`: full resolution -> 10 m blocks -> hex index raster, resumable | running |
+| 5x | water depth after a cloudburst (`regen_70mm_1h_*`, static) | Klimaateffectatlas 2026, 0.5 m COG tiles (CC BY 4.0) | `prepare/regenwater.py`: full resolution -> 10 m blocks -> hex index raster, resumable | done |
+| 5y | greenness from space (`s2_*`, yearly) + per land cover inside a cell (`datacube_<region>_s2_dekking(_r8/_r7).parquet`) | Copernicus Sentinel-2 L2A via Earth Engine (NDVI composites per year, 10 m) | `prepare/s2_ndvi.py` (export + download), `prepare/s2_metrics.py` (per pixel -> hex), `prepare/s2_cover.py` (split by LGN group of the pixel) | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -472,6 +477,31 @@ own geojson. Per hex: inside an area, the mean of its points that year; the cell
 The Veluwe cross-section points have no location and are skipped. Validation: per area and year, `man_nh3_ug_m3`
 vs `gcn_nh3_ug_m3` r 0.83-0.94 (2018-2025), mean levels within 0.4 ug/m3 (GCN is calibrated on MAN, so this checks
 the placement, not the model).
+
+## Sentinel-2 NDVI (`prepare/s2_ndvi.py`, `s2_metrics.py`, `s2_cover.py`), yearly, nl (zh is a slice)
+
+Earth Engine builds one composite per year from Sentinel-2 L2A (COPERNICUS/S2_SR_HARMONIZED): a pixel observation
+is clear when Cloud Score+ `cs_cdf >= 0.60`; bands per 10 m pixel: peak NDVI April-October, median NDVI
+July-August and the clear-observation counts of both windows, on the RD 10 m grid of the hex index raster
+(`datacube-zh hexindex` for nl, 3.9 GB). The project runs in Earth Engine's noncommercial restricted mode, so
+an export of 8 years took ~3 days. `s2_metrics.py` computes everything per pixel first (never-green, dense green,
+new sealing/greening from Y-1/Y/Y+1, the anomaly against the pixel's own median) and then shares and means of the
+cell's land pixels, plus the pixel counts that `coarsen.py` uses as weights. Water: LGN 16/17 in at least half of
+the LGN years, or peak NDVI < 0 in >= 75% of the years (NDVI alone counted the Wadden Sea and turbid lakes as
+never-green land). Thresholds and the clear-sky cut were fixed in the first version (2026-10-17), not tuned on any
+comparison.
+
+Validation (nl, 2018-2025, against independent layers): water share vs LGN water r 0.998; never-green share vs 3D
+BAG footprint share r 0.50-0.56 per year, vs LGN built-up + roads r 0.47-0.54; green share falls with groenklasse
+(r -0.56..-0.60); new sealing is 10-18x higher in cells that gain >= 20 BAG addresses between Y-1 and Y+1; the
+national mean summer anomaly follows the KNMI precipitation deficit across the 8 years (r -0.82; 2018 lowest).
+Sentinel-2C (2025): ~35% more clear observations, but the peaks of fixed forest and grassland cells stay within
+their 2018-2024 range, so no break; built-up cells have a lower peak in the dry years 2022 and 2025 (urban green).
+
+`s2_cover.py` splits the same pixels by the LGN group of that year (majority of the 4 LGN 5 m pixels in a 10 m
+pixel; `gemengd` on a tie, `geen_lgn` outside LGN; `_zuiver` columns use only pixels whose 4 LGN pixels agree). Per
+cell and year the groups add up exactly to the cube's pixel counts and means (checked). Built for cube-sim's
+drought agent (2026-10-20): grass, forest and heath react differently to the same summer.
 
 ## National wind per year (`prepare/knmi_wind.py`)
 

@@ -82,6 +82,20 @@ reference_period = "cloud-free overpasses (~13:30) in calendar year Y"
 time = "yearly"
 
 [[rule]]
+columns = ["s2_*pixels", "s2_helder_*"]
+tier = "meta"
+native_resolution = "Sentinel-2 10 m pixel"
+reference_period = "clear observations April-October (zomer: July-August) of Y"
+time = "yearly"
+
+[[rule]]
+columns = ["s2_*"]
+tier = "measured"
+native_resolution = "Sentinel-2 10 m pixel (per-pixel metric, then share of the cell's land pixels)"
+reference_period = "clear observations April-October of Y (zomer: July-August; verstening/vergroening: Y-1, Y, Y+1)"
+time = "yearly"
+
+[[rule]]
 columns = ["vee_*"]
 tier = "modelled"
 native_resolution = "gemeente (CBS census), spread over BRP farmland within it"

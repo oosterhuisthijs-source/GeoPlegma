@@ -27,6 +27,8 @@ Per hex and year (shares of the hex's land pixels with data):
   s2_piek_gem, s2_zomer_gem, s2_zomer_anomalie   (land pixels only)
   s2_helder_piek, s2_helder_zomer                mean clear observations per pixel (Apr-Oct, Jul-Aug)
   s2_water_aandeel                               share of the hex's pixels that are water (same every year)
+  s2_land_pixels, s2_wissel_pixels, s2_zomer_pixels, s2_anomalie_pixels, s2_data_pixels
+                                                 pixel counts behind the shares (weights for res 8/7)
 Writes <data>/<work>/layers/s2.parquet. Always computed on the national grid; zh is a slice of nl.
 
 Usage: uv run datacube-zh/prepare/s2_metrics.py [--data own_data] [--rows N (test: first N rows only)]
@@ -199,17 +201,25 @@ def main():
         "s2_helder_piek": share(acc["n_piek"], acc["data"]),
         "s2_helder_zomer": share(acc["n_zomer"], acc["data"]),
     }
+    # pixel counts behind each share: the weights when coarsening to res 8/7
+    counts = {"s2_land_pixels": acc["land"], "s2_wissel_pixels": acc["wissel_basis"], "s2_zomer_pixels": acc["zomer_n"],
+              "s2_anomalie_pixels": acc["anom_n"], "s2_data_pixels": acc["data"]}
     water_share = share(water_px, pixels)
     all_years = list(range(2018, 2026))
     out = {c: [] for c in cols_out}
     for y in all_years:
         for c, v in cols_out.items():
             out[c].append(v[years.index(y)][1:] if y in years else np.full(n - 1, np.nan))
+    pix = {c: [] for c in counts}
+    for y in all_years:
+        for c, v in counts.items():
+            pix[c].append(v[years.index(y)][1:].astype(np.int32) if y in years else np.zeros(n - 1, np.int32))
     m = n - 1
     table = pa.table({
         "h3_id": ids * len(all_years), "year_int": np.repeat(np.array(all_years, np.int32), m),
         **{c: pa.array(np.round(np.concatenate(v), 4), from_pandas=True) for c, v in out.items()},
         "s2_water_aandeel": pa.array(np.round(np.tile(water_share[1:], len(all_years)), 4), from_pandas=True),
+        **{c: pa.array(np.concatenate(v)) for c, v in pix.items()},
     })
     source = {"source": "Sentinel-2 (COPERNICUS/S2_SR_HARMONIZED, Cloud Score+ cs_cdf >= 0.6) NDVI composites from "
                         "Earth Engine (prepare/s2_ndvi.py), per-pixel metrics, hex index by geoplegma",

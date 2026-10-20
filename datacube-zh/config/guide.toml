@@ -224,10 +224,10 @@ note = "NDW register of public charging points (all operators), one snapshot rep
 [[concept]]
 name = "Climate per year (KNMI)"
 use = ["knmi_temp_gem_c", "knmi_neerslag_mm", "knmi_neerslagtekort_max_mm", "knmi_tropische_dagen"]
-alternatives = ["knmi_graaddagen", "knmi_zomerse_dagen", "knmi_vorstdagen", "knmi_zware_neerslag_dagen", "knmi_verdamping_mm"]
+alternatives = ["knmi_graaddagen", "knmi_zomerse_dagen", "knmi_vorstdagen", "knmi_zware_neerslag_dagen", "knmi_verdamping_mm", "knmi_neerslagtekort_31aug_mm"]
 covers = ["knmi_*"]
 trend = "ok"
-note = "KNMI daily 1 km grids interpolated from station measurements, summed or averaged per calendar year: year-to-year differences are the weather (2018 and 2022 were dry summers; check knmi_neerslagtekort_max_mm). The grid is smooth between stations (temperature from ~35, precipitation from ~300, evaporation from ~32 stations), so local detail below a few km is interpolation, not measurement. Precipitation deficit: KNMI definition, cumulative evaporation minus precipitation from 1 April, maximum up to 30 September; negative in a wet summer."
+note = "KNMI daily 1 km grids interpolated from station measurements, summed or averaged per calendar year: year-to-year differences are the weather (2018 and 2022 were dry summers; check knmi_neerslagtekort_max_mm). The grid is smooth between stations (temperature from ~35, precipitation from ~300, evaporation from ~32 stations), so local detail below a few km is interpolation, not measurement. Precipitation deficit: KNMI definition, cumulative evaporation minus precipitation from 1 April, maximum up to 30 September; negative in a wet summer. knmi_neerslagtekort_31aug_mm is the same cumulative deficit ON 31 August (end of the Sentinel-2 July-August window), not a maximum. For last summer's weather in 2018: side file datacube_<region>_knmi_voor.parquet has every knmi_* column for 2017 per res-9 cell (same code; at res 8/7 take the area-weighted mean of the children, as coarsen.py does)."
 
 [[concept]]
 name = "Nitrogen deposition (RIVM)"
@@ -268,6 +268,14 @@ alternatives = ["tropomi_no2_maanden"]
 covers = ["tropomi_*"]
 trend = "care"
 note = "Sentinel-5P TROPOMI tropospheric NO2 column (KNMI TEMIS monthly means of the reprocessed record, 0.125 degree, ~14 x 9 km): a real measurement, but of the whole column above the cell, not ground-level air, and only regional (Zuid-Holland is ~45 TROPOMI cells). Yearly value = mean of the monthly means; empty for 2018 (record starts May 2018 and winter has the highest NO2) and where fewer than 10 months have a value (clouds, mostly 2019-2021 at the edges). The 2020 dip is COVID."
+
+[[concept]]
+name = "Greenness from space (Sentinel-2 NDVI)"
+use = ["s2_zomer_gem", "s2_zomer_anomalie", "s2_niet_groen_aandeel", "s2_verstening_aandeel"]
+alternatives = ["s2_piek_gem", "s2_groen_aandeel", "s2_vergroening_aandeel", "s2_water_aandeel", "s2_helder_piek", "s2_helder_zomer"]
+covers = ["s2_*"]
+trend = "ok"
+note = "Measured: Sentinel-2 NDVI per 10 m pixel (clouds removed with Cloud Score+ cs_cdf >= 0.60, fixed before any comparison), per pixel first and then a share or mean of the cell's LAND pixels (water from LGN, or NDVI < 0 in >= 75% of the years, is left out). s2_zomer_gem = July-August mean; s2_zomer_anomalie = July-August minus each pixel's own 2018-2025 median: the drought signal, independent of what grows there (national mean follows the KNMI precipitation deficit across the 8 years: r -0.82; 2018 the lowest). s2_niet_groen_aandeel = never green in April-October (buildings, roads, greenhouses, bare sand): r 0.52 with 3D BAG footprint share; greenhouses sit in between. s2_verstening_aandeel = new, lasting loss of green (green in Y-1, not green in Y and Y+1), so empty in 2018 and 2025; 10-18x higher in cells that gain >= 20 BAG addresses between Y-1 and Y+1. Dry summers also lower the peak in built-up cells (urban green browns: 2022, 2025), so never-green rises in dry years without new building. 2025: a third satellite (Sentinel-2C next to 2A/2B) gives ~35% more clear observations (s2_helder_*); peaks of forest and grassland stay inside their 2018-2024 range, so no break. Res 8/7: means weighted by their pixel counts (s2_*_pixels) = the mean over all pixels of the coarse cell; pixels without a clear July-August observation are not in s2_zomer_gem or s2_zomer_pixels. Per land cover inside a cell: datacube_<region>_s2_dekking.parquet (+ _r8 / _r7): one row per cell, year and LGN group of the PIXEL (groep: the 10 LGN groups of lgn_groep_*, plus gemengd = a tie between the 4 LGN 5 m pixels inside a 10 m pixel, and geen_lgn = outside LGN, east of RD x 280 km). Columns s2_zomer_gem / s2_zomer_pixels, s2_zomer_gem_zuiver / s2_zomer_pixels_zuiver (pure pixels only: all 4 LGN pixels in the group; drops field edges and roadsides), s2_piek_gem / s2_land_pixels, s2_zomer_anomalie / s2_anomalie_pixels. Pixels of all groups add up exactly to the cube's s2_*_pixels and their pixel-weighted mean is the cube's value. The group follows LGN of that year, so LGN's own breaks (2021 roads, 2021/2022 grassland and nature remaps, see breaks) move pixels between groups: compare a group with itself within one LGN method, or use the pure pixels."
 
 # --- Known breaks, machine-readable ------------------------------------------------------------------
 # One entry per known break: the values of `columns` (globs) in each of `years` are NOT comparable with the

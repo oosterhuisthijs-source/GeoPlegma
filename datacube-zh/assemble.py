@@ -14,6 +14,9 @@ Writes, under the region's out directory (config/regions.toml):
 - datacube_<region>.columns.json   per-column manifest
 - datacube_<region>_lijnen.parquet  OSM motorways/railways as whole lines (GeoParquet, prepare/osm.py),
                                when prepared; the cube carries their lengths per cell (osm_*_lengte_m)
+- datacube_<region>_s2_dekking.parquet   NDVI per cell, year and LGN group of the pixel (prepare/s2_cover.py),
+                               when prepared; coarsen.py adds _r8/_r7
+- datacube_<region>_knmi_voor.parquet    KNMI per cell for years before the cube (2017), when prepared
 - datacube_<region>_jaar.parquet   national values per year, not per cell (prepare/knmi_wind.py: wind),
                                when prepared; same file for every region
 - datacube_<region>_gemeente.parquet   values per gemeente (2024 borders, join on gemeentecode) and year, not per
@@ -225,6 +228,9 @@ NH3_ANIMAL = ("alle uitstoot uit de mest van deze diersoort: stal, opslag, bewei
               "ook op velden ver van het bedrijf)")
 MAN_SRC = ("RIVM Meetnet Ammoniak Nederland (man.rivm.nl): jaargemiddelde per meetpunt (passieve samplers), "
            "~100 natuurgebieden + 17 punten daarbuiten sinds 2021; prepare/man.py")
+S2_SRC = ("Copernicus Sentinel-2 L2A (COPERNICUS/S2_SR_HARMONIZED, wolken weg met Cloud Score+ cs_cdf >= 0,6) via "
+          "Earth Engine, NDVI per 10 m-pixel; prepare/s2_ndvi.py + s2_metrics.py")
+S2_LAND = "aandeel van de landpixels (10 m, met data) in de cel; water (LGN, of NDVI < 0 in >= 75% van de jaren) telt niet mee"
 VEE_GRAZE = "verdeeld naar grasland + mais + voedergewassen (BRP) in de gemeente"
 VEE_HOUSED = "verdeeld naar alle landbouwgrond (BRP) in de gemeente: een dichtheid, niet de plek van de stal"
 WK_SRC = ("Rijkswaterstaat Waterveiligheidsportaal WFS (nbpw_dijktrajecten_formeel, lbo1_veiligheidsoordeel_dijktrajecten, "
@@ -257,6 +263,8 @@ MEASURE_INFO = {
     "knmi_neerslagtekort_max_mm": (KNMI_SRC, "mm", "grootste potentiele neerslagtekort van het groeiseizoen: "
                                    "cumulatief verdamping - neerslag vanaf 1 april, maximum tot 30 september (KNMI-"
                                    f"definitie, niet afgekapt op 0); {CELL_CENTRE}"),
+    "knmi_neerslagtekort_31aug_mm": (KNMI_SRC, "mm", "potentieel neerslagtekort op 31 augustus: cumulatief verdamping "
+                                     f"- neerslag van 1 april tot en met 31 augustus (einde van het NDVI-zomervenster); {CELL_CENTRE}"),
     "nh3_rundvee_kg": (NH3_SRC, "kg NH3/jaar", f"rundvee: {NH3_ANIMAL}; {NH3_SPLIT}"),
     "nh3_varkens_kg": (NH3_SRC, "kg NH3/jaar", f"varkens: {NH3_ANIMAL}; {NH3_SPLIT}"),
     "nh3_pluimvee_kg": (NH3_SRC, "kg NH3/jaar", f"pluimvee: {NH3_ANIMAL}; {NH3_SPLIT}"),
@@ -271,6 +279,27 @@ MEASURE_INFO = {
                       "meetpunt dat punt; leeg buiten de gebieden"),
     "man_meetpunten": (MAN_SRC, "aantal", "aantal meetpunten achter de waarde in dat jaar"),
     "man_gebied": (MAN_SRC, "naam", "MAN-gebied (Natura 2000-gebied of los meetpunt) waarin het celcentrum ligt"),
+    "s2_niet_groen_aandeel": (S2_SRC, "0-1", f"nooit groen in april-oktober (hoogste NDVI < 0,30: gebouwen, "
+                              f"verharding, kassen, kaal zand); {S2_LAND}"),
+    "s2_groen_aandeel": (S2_SRC, "0-1", f"dicht begroeid op enig moment in het seizoen (hoogste NDVI >= 0,60); {S2_LAND}"),
+    "s2_verstening_aandeel": (S2_SRC, "0-1", "nieuw en blijvend verlies van groen: het jaar ervoor groen (NDVI >= 0,50), "
+                              "dit jaar en het volgende nooit groen; leeg in 2018 en 2025 (vraagt Y-1 en Y+1); "
+                              f"{S2_LAND}"),
+    "s2_vergroening_aandeel": (S2_SRC, "0-1", "het omgekeerde: het jaar ervoor nooit groen, dit jaar en het volgende "
+                               f"groen; leeg in 2018 en 2025; {S2_LAND}"),
+    "s2_piek_gem": (S2_SRC, "NDVI -1..1", "gemiddelde over de landpixels van de hoogste NDVI van april-oktober"),
+    "s2_zomer_gem": (S2_SRC, "NDVI -1..1", "gemiddelde NDVI in juli-augustus over de landpixels"),
+    "s2_zomer_anomalie": (S2_SRC, "NDVI", "NDVI juli-augustus min de eigen mediaan van elke pixel over 2018-2025 "
+                          "(vraagt >= 4 jaar), gemiddeld over de landpixels: droogte (negatief) of groenere zomer, los "
+                          "van wat er groeit"),
+    "s2_helder_piek": (S2_SRC, "aantal", "gemiddeld aantal wolkenvrije waarnemingen per pixel in april-oktober"),
+    "s2_helder_zomer": (S2_SRC, "aantal", "gemiddeld aantal wolkenvrije waarnemingen per pixel in juli-augustus"),
+    "s2_water_aandeel": (S2_SRC, "0-1", "aandeel van de pixels van de cel dat water is (vast masker, elk jaar gelijk)"),
+    "s2_land_pixels": (S2_SRC, "aantal", "landpixels (10 m) met data in dat jaar: gewicht voor de aandelen"),
+    "s2_wissel_pixels": (S2_SRC, "aantal", "landpixels met data in Y-1, Y en Y+1: gewicht voor verstening/vergroening"),
+    "s2_zomer_pixels": (S2_SRC, "aantal", "landpixels met een juli-augustuswaarde: gewicht voor s2_zomer_gem"),
+    "s2_anomalie_pixels": (S2_SRC, "aantal", "landpixels met een anomalie (>= 4 jaar data): gewicht voor s2_zomer_anomalie"),
+    "s2_data_pixels": (S2_SRC, "aantal", "pixels met data (land en water): gewicht voor s2_helder_*"),
     "gdn_stikstof_mol_ha": (GDN_SRC, "mol N/ha/jaar", f"totale stikstofdepositie; {CELL_CENTRE}"),
     "gdn_verzuring_mol_ha": (GDN_SRC, "mol H+/ha/jaar", f"potentieel verzurende depositie; {CELL_CENTRE}"),
     "gcn_no2_ug_m3": (GCN_SRC, "ug/m3", f"jaargemiddelde achtergrondconcentratie NO2; {CELL_CENTRE}"),
@@ -318,6 +347,9 @@ MEASURE_WARNINGS = {
     "man_nh3": ("meting, maar weinig punten: een gebiedswaarde is het gemiddelde van 1-15 punten, toegekend aan het "
                 "hele gebied; de punten staan waar RIVM meet (vaak aan de rand naar landbouwgrond). Vergelijk met "
                 "gcn_nh3_ug_m3 (model, gekalibreerd op deze metingen)"),
+    "s2_": ("NDVI uit Sentinel-2: kassen, zonneparken en kale akkers (vroeg geoogst, braak) tellen als niet groen; "
+            "een wolkenrijk jaar (zie s2_helder_*) geeft een lagere piek. Geen landgebruikskaart: vergelijk met lgn_* "
+            "of bag3d_*"),
     "tropomi_": ("satellietmeting van de hele troposferische kolom, niet de concentratie op leefhoogte; ~14 x 9 km, "
                  "dus alleen een regionaal signaal"),
 }
@@ -363,21 +395,17 @@ def load_tessera(work: Path, year: int, schema: pa.Schema | None, h3_ids: pa.Chu
 
 
 # Yearly layers kept as one file for all years (h3_id, year_int, ...): measurements and model maps
-# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py, nh3.py, man.py). Read once, filtered per year.
-YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee", "nh3", "man")
-_yearly_cache: dict = {}
+# (prepare/knmi.py, rivm.py, tropomi.py, kdw.py, vee.py, nh3.py, man.py, s2_metrics.py), read per year.
+YEARLY_FILES = ("knmi", "rivm", "tropomi", "kdw", "vee", "nh3", "man", "s2")
 
 
 def load_yearly(work: Path, layer: str, year: int) -> pa.Table | None:
+    # read one year only (row-group filter): caching all years of every layer cost GBs in the nl assemble
     f = work / f"layers/{layer}.parquet"
     if not f.exists():
         return None
-    if f not in _yearly_cache:
-        t = pq.read_table(f)
-        _yearly_cache[f] = t.set_column(t.schema.get_field_index("year_int"), "year_int",
-                                        pc.cast(t["year_int"], pa.int64()))
-    t = _yearly_cache[f]
-    return t.filter(pc.equal(t["year_int"], year))
+    t = pq.read_table(f, filters=[("year_int", "=", year)])
+    return t.set_column(t.schema.get_field_index("year_int"), "year_int", pc.cast(t["year_int"], pa.int64()))
 
 
 def build_year(work: Path, year: int, base: pa.Table, lgn: list[str] | None) -> pa.Table:
@@ -779,6 +807,12 @@ def main():
     if (work / "layers/netgebieden.parquet").exists():
         shutil.copy2(work / "layers/netgebieden.parquet", out / f"{name}_netgebieden.parquet")
         log(f"wrote {out / f'{name}_netgebieden.parquet'} (grid supply areas)")
+    if (work / "layers/s2_dekking.parquet").exists():
+        shutil.copy2(work / "layers/s2_dekking.parquet", out / f"{name}_s2_dekking.parquet")
+        log(f"wrote {out / f'{name}_s2_dekking.parquet'} (NDVI per cell, year and LGN group of the pixel)")
+    if (work / "layers/knmi_voor.parquet").exists():
+        shutil.copy2(work / "layers/knmi_voor.parquet", out / f"{name}_knmi_voor.parquet")
+        log(f"wrote {out / f'{name}_knmi_voor.parquet'} (KNMI per cell for years before the cube)")
     if (work / "layers/knmi_wind_jaar.parquet").exists():
         shutil.copy2(work / "layers/knmi_wind_jaar.parquet", out / f"{name}_jaar.parquet")
         log(f"wrote {out / f'{name}_jaar.parquet'} (national values per year)")
@@ -849,6 +883,12 @@ def main_slice(args, reg: dict, parent: dict, data: Path, work: Path, out: Path,
         slice_lines(parent_out / f"{pname}_lijnen.parquet", set(grid["h3_id"].to_pylist()), out / f"{name}_lijnen.parquet")
     if (parent_out / f"{pname}_jaar.parquet").exists():
         shutil.copy2(parent_out / f"{pname}_jaar.parquet", out / f"{name}_jaar.parquet")  # national: same file
+    for suffix in ("knmi_voor", "s2_dekking"):  # per-cell side files: keep this region's cells
+        if (parent_out / f"{pname}_{suffix}.parquet").exists():
+            k = pq.read_table(parent_out / f"{pname}_{suffix}.parquet")
+            k = k.filter(pc.is_in(k["h3_id"], value_set=grid["h3_id"].combine_chunks()))
+            pq.write_table(k, out / f"{name}_{suffix}.parquet", compression="zstd")
+            log(f"wrote {out / f'{name}_{suffix}.parquet'} ({k.num_rows} rows)")
     if (parent_out / f"{pname}_waterkeringen.parquet").exists():
         slice_lines(parent_out / f"{pname}_waterkeringen.parquet", set(grid["h3_id"].to_pylist()),
                     out / f"{name}_waterkeringen.parquet")

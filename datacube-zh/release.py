@@ -12,6 +12,8 @@ Writes <data>/releases/datacube_<region>/<version>/:
 - datacube_<region>_r8/_r7.parquet + .columns.json   coarser H3 resolutions (coarsen.py), when built
 - datacube_<region>_lijnen.parquet              OSM motorways/railways as whole lines (GeoParquet), when built
 - datacube_<region>_jaar.parquet                national values per year (wind), when built
+- datacube_<region>_knmi_voor.parquet           KNMI per cell for years before the cube (2017), when built
+- datacube_<region>_s2_dekking(_r8/_r7).parquet NDVI per cell, year and LGN group of the pixel, when built
 - datacube_<region>_gemeente.parquet            values per gemeente and year (permit-holder housing), when built
 - datacube_<region>_coa.parquet                 COA reception capacity per gemeente and snapshot date, when built
 - datacube_<region>_datacentra.parquet          RVO data centres per gemeente and year, when built
@@ -58,7 +60,7 @@ NULL_SHIFT = 0.02  # absolute non-null share change reported in diff.md
 
 
 # side files next to the cube (datacube_<region>_<suffix>.parquet), copied into a release when assemble.py built them
-SIDE_FILES = ["lijnen", "jaar", "gemeente", "coa", "datacentra", "netcongestie", "netgebieden", "waterkeringen"]
+SIDE_FILES = ["lijnen", "jaar", "knmi_voor", "s2_dekking", "s2_dekking_r8", "s2_dekking_r7", "gemeente", "coa", "datacentra", "netcongestie", "netgebieden", "waterkeringen"]
 
 
 def log(*a):
