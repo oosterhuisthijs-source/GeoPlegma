@@ -198,17 +198,12 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.20.3, `datacube_nl` 2026.10.20.3 (.3: 19 Klimaateffectatlas static columns `funderingsrisico_*`/`droogtestress_*`/`zuurstofstress_*`/`grondwater_*`/`natuurbrandrisico_*`/`overstromingskans_20cm_*` + OSM primary/secondary/tertiary roads in `_lijnen` (Unity request) with `osm_provinciaal/regionaal/lokaal_lengte_m`; built with the new `assemble.py --incremental` + `coarsen.py --incremental`, README "Incremental build"). Before: .2: % gas-heated / gas-free homes
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.20.4, `datacube_nl` 2026.10.20.4 (.4: tree canopy per AHN epoch `boomkroon_ahn3/4/5_aandeel`, `prepare/boomkroon.py`, Klimaateffectatlas RMK_BKB via WCS, tile cache in `work_nl/boomkroon/` so a rerun takes minutes; AHN5 partial -> null, validation in README row 5z; optional later: side table per buurt from WFS `RMK_BuurtAggregaties` (canopy + shade + 3-30-300 per epoch, -9995 = no data). Before: .3: 19 Klimaateffectatlas static columns `funderingsrisico_*`/`droogtestress_*`/`zuurstofstress_*`/`grondwater_*`/`natuurbrandrisico_*`/`overstromingskans_20cm_*` + OSM primary/secondary/tertiary roads in `_lijnen` (Unity request) with `osm_provinciaal/regionaal/lokaal_lengte_m`; built with the new `assemble.py --incremental` + `coarsen.py --incremental`, README "Incremental build"). Before: .2: % gas-heated / gas-free homes
 `wb_perc_aardgas*`, Kerncijfers 2024 only). Weekly user timer `datacube-sources.timer` (Mon 09:00) runs `sources.py`,
 log `own_data/sources_check.log`, desktop notification on NEW. .20: (Sentinel-2 NDVI `s2_*` + `knmi_neerslagtekort_31aug_mm`; side files `_s2_dekking` (NDVI per LGN group of the pixel,
 `prepare/s2_cover.py`, res 9/8/7) and `_knmi_voor` (KNMI 2017; Rd1 misses South Limburg on 30 July 2017 -> null);
 validation in datacube-zh README "Sentinel-2 NDVI"; no 2025/Sentinel-2C break). Open from the sim: April-May NDVI band
-(Earth Engine quota). Parked by the user 2026-10-20 (ready, not run): tree canopy per AHN epoch, `prepare/boomkroon.py`
-(Klimaateffectatlas RMK_BKB_AHN3/4/5 via WCS, run command in README row 5z, ~4 h). After the run: wire
-`layers/boomkroon.parquet` into assemble (static), provenance (AHN3 2014-2019 / AHN4 2020-2022 / AHN5 2023-2025,
-AHN5 partial -> null), guide (trend care: AHN3 found less crown in test windows, partly point density), coarsen
-(area-weighted mean), validate vs `s2_groen_aandeel` and LGN forest; optional side table per buurt from WFS
-`RMK_BuurtAggregaties` (canopy + shade + 3-30-300 per epoch, -9995 = no data). Before: .18.4 (sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
+(Earth Engine quota). Before: .18.4 (sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
 `osm_datacentrum_*` + `_datacentra`, `net_*` + `_netgebieden` + `_netcongestie`; side files listed in release.py
 `SIDE_FILES`). Monthly user timer `datacube-netcongestie.timer` archives the congestion CSVs. nl `datacube-zh static`
 no longer fits 12 GB: use `--only` + `prepare/static_merge.py`. Open: electricity per gemeente by sector (CBS 82538NED
