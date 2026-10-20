@@ -15,7 +15,8 @@ equal to the full 0.25 m read to 0.0003). Samples go to 10 m blocks and through 
 
 AHN5 coverage: the mask has no nodata (0 = no crown AND not flown), so a tile counts as not flown when AHN5 has no
 crown pixel at all while AHN4 has >= 0.5% crown, or when the WCS says it lies outside AHN5. Tiles with (almost) no
-trees in AHN4 cannot tell; they take the status of the nearest decided tile. Not flown -> null.
+trees in AHN4 cannot tell; they take the status of the nearest decided tile. Not flown -> null. The flight edge also
+runs through tiles: a hex without any AHN5 crown where AHN4 had >= 5% counts as not flown too.
 
 Per hex (null where the epoch does not cover the hex):
   boomkroon_ahn3_aandeel, boomkroon_ahn4_aandeel, boomkroon_ahn5_aandeel   share of the hex under tree crowns
@@ -49,6 +50,7 @@ TILE, SAMPLE, BLOCK = 800, 1.0, 10.0
 K = int(BLOCK / SAMPLE)  # samples per block side
 NB = int(TILE / BLOCK)   # blocks per tile side
 MIN_AHN4 = 0.005         # AHN4 crown share above which an all-zero AHN5 tile means "not flown"
+MIN_AHN4_HEX = 0.05      # the same per hex (flight edge inside a tile)
 
 
 def log(*a):
@@ -223,6 +225,12 @@ def main():
         has = n >= 0.5 * np.maximum(full, 1)
         with np.errstate(invalid="ignore", divide="ignore"):
             v = np.round(crown / n, 4)
+        if epoch == "ahn4":
+            v4 = v
+        if epoch == "ahn5":
+            edge = has & (crown == 0) & (np.nan_to_num(v4) >= MIN_AHN4_HEX)
+            log(f"ahn5: {edge.sum():,} hexes without crown next to AHN4 crown -> not flown")
+            has &= ~edge
         cols[f"boomkroon_{epoch}_aandeel"] = pa.array(np.where(has, v, np.nan), pa.float64(), mask=~has)
         log(f"{epoch}: {has.sum():,} hexes, national crown share {crown[has].sum() / n[has].sum():.2%}")
     ids = pq.read_table(work / "grid.parquet", columns=["h3_id"])["h3_id"].to_pylist()

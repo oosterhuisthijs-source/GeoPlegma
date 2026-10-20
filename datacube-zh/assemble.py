@@ -667,6 +667,15 @@ def build_manifest(schema: pa.Schema, shares_per_year: dict, config_dir: Path) -
                          "diepte_max_m": ("m", "diepste pixel (0,5 m) in de cel"),
                          "aandeel_10cm": ("0-1", "aandeel van de cel met meer dan 10 cm water"),
                          "aandeel_30cm": ("0-1", "aandeel van de cel met meer dan 30 cm water")}[name.split("_", 3)[3]]
+        elif name.startswith("boomkroon_"):
+            epoch = name.split("_")[1].upper()
+            src = (f"Klimaateffectatlas 2026 (Rijksmonitor Klimaatadaptatie), boomkroonbedekking RMK_BKB_{epoch}, 0,25 m "
+                   "0/1-masker uit het AHN, CC BY 4.0; prepare/boomkroon.py")
+            unit = "0-1"
+            agg = (f"aandeel van de cel onder boomkronen volgens {epoch} ("
+                   + {"AHN3": "ingewonnen 2014-2019", "AHN4": "ingewonnen 2020-2022",
+                      "AHN5": "ingewonnen 2023-2025, nog niet landsdekkend: leeg waar niet gevlogen"}[epoch]
+                   + "); WCS-tegels van 800 m, bemonsterd op 1 m")
         elif name in LAAD_INFO:
             src = LAAD_SOURCE.format(stamp=LAAD_STAMP or "onbekend")
             unit, agg = LAAD_INFO[name]
@@ -816,7 +825,7 @@ def main():
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
                      pq.read_table(work / "layers/static.parquet"), "h3_id")
     rain = [p.stem for p in sorted((work / "layers").glob("regen_*.parquet"))]  # prepare/regenwater.py, per scenario
-    for layer in ("wind", "osm", "osm_extra", "laadpalen", "waterkeringen", "netcongestie", *rain):
+    for layer in ("wind", "osm", "osm_extra", "laadpalen", "waterkeringen", "netcongestie", *rain, "boomkroon"):
         if (work / f"layers/{layer}.parquet").exists():
             base = left_join(base, pq.read_table(work / f"layers/{layer}.parquet"), "h3_id")
     lgn = lgn_columns(work)

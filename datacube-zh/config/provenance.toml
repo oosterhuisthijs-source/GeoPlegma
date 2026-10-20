@@ -380,6 +380,13 @@ reference_period = "forecast of cumulative subsidence 2020-2050 (laag / hoog sce
 time = "static"
 
 [[rule]]
+columns = ["boomkroon_*"]
+tier = "measured"
+native_resolution = "0.25 m crown mask from the AHN point clouds (Klimaateffectatlas), sampled at 1 m"
+reference_period = "per AHN epoch: AHN3 flown 2014-2019, AHN4 2020-2022, AHN5 2023-2025 (AHN5 partial)"
+time = "static"
+
+[[rule]]
 columns = ["funderingsrisico_*"]
 tier = "modelled"
 native_resolution = "per CBS buurt (Deltares/KCAF, Klimaateffectatlas)"

@@ -165,6 +165,14 @@ trend = "no"
 note = "Static. bodembeweging_* = measured InSAR ground motion in mm/year (negative = sinking), area-weighted over the Klimaateffectatlas hexagons in the cell; only where InSAR has reflectors (buildings, roads), so meadows and peat land are mostly empty; ondiep = the shallow part (soil compaction, peat oxidation) rather than deep causes (gas, salt). KEA does not state the InSAR source or period (likely EGMS 2019-2023). bodemdaling_2020_2050_* = Deltares forecast of cumulative subsidence by 2050 in m (laag/hoog scenario, 100 m grid), the peat polders of Holland and Friesland up to ~0.5 m."
 
 [[concept]]
+name = "Tree canopy per AHN epoch (Klimaateffectatlas)"
+use = ["boomkroon_ahn4_aandeel"]
+alternatives = ["boomkroon_ahn3_aandeel", "boomkroon_ahn5_aandeel"]
+covers = ["boomkroon_*"]
+trend = "care"
+note = "Share of the cell under tree crowns, from the 0.25 m crown masks the Klimaateffectatlas derived from the national height model (sampled at 1 m), one column per AHN epoch: AHN3 (flown 2014-2019), AHN4 (2020-2022, complete), AHN5 (2023-2025, not complete yet: null where not flown, ~68% of the cells in this edition; a few cells at the flight edge are only partly flown and read too low). Static columns, repeated in every year: the epoch is in the name, not in year_int. Differences between epochs mix real change (felling, planting, growth) with differences in flight season and point density, so compare epochs with care and prefer large changes over small ones. AHN4 is the complete reference. Trees, not all green: for grass and crops use s2_* or lgn_*. Credit: Klimaateffectatlas (CC BY 4.0)."
+
+[[concept]]
 name = "Foundation risk: pile rot and uneven settling (Klimaateffectatlas)"
 use = ["funderingsrisico_paalrot_huidig_pct", "funderingsrisico_paalrot_2050_hoog_pct"]
 alternatives = ["funderingsrisico_paalrot_2050_laag_pct", "funderingsrisico_verschilzetting_2050_laag_pct", "funderingsrisico_verschilzetting_2050_hoog_pct"]
