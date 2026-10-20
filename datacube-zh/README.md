@@ -123,7 +123,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5d | TESSERA embeddings: 16-dim PCA + year-on-year change (2018-2025, zh only) | [TESSERA](https://github.com/ucam-eo/geotessera) v1.1 annual 10 m embeddings (Sentinel-1/2) | `prepare/tessera_hex.py`: pixel centre -> H3 (`h3` lib), hex mean -> fixed PCA; per-pixel cosine distance between years | done (trial) |
 | 5e | BAG verblijfsobjecten per gebruiksdoel (`num_*`, yearly 2018-2025) | [LV BAG levenscyclus-extract](https://service.pdok.nl/kadaster/bag/atom/bag.xml) (PDOK, full history) | state on 1 January; point -> geoplegma `zone_from_point`; `config/bag.toml` | done |
 | 5f | wind turbines (`wind_*`, static, snapshot January 2026) | [RIVM windturbines](https://data.overheid.nl/dataset/54341-windturbines---vermogen) (WFS `data.rivm.nl/geo/alo/wfs`) | `prepare/wind.py`: turbine point -> H3 cell; count, power, max hub/rotor/tip height; distance hex centre -> nearest turbine | done |
-| 5g | OSM motorways + railways: line file + `osm_*_lengte_m` per cell (static, latest extract) | [Geofabrik](https://download.geofabrik.de/europe/netherlands.html) `netherlands-latest.osm.pbf` (© OpenStreetMap contributors, ODbL) | `prepare/osm.py`: ways by tag, exact line x hex intersection in RD | done |
+| 5g | OSM main roads (motorway..tertiary, since 2026-10-20) + railways: line file + `osm_*_lengte_m` per cell (static, latest extract) | [Geofabrik](https://download.geofabrik.de/europe/netherlands.html) `netherlands-latest.osm.pbf` (© OpenStreetMap contributors, ODbL) | `prepare/osm.py`: ways by tag, exact line x hex intersection in RD | done |
 | 5h | OSM high-voltage grid, substations, solar park power, marinas (`osm_hoogspanning_*`, `osm_onderstation_aantal`, `osm_zonnepark_vermogen_kw`, `osm_jachthaven_aantal`; static) | same Geofabrik extract | `prepare/osm_extra.py`: >= 50 kV only; exact lengths/areas in RD | done |
 | 5i | public charging points (`laad_punten_aantal`, `laad_punten_snel_aantal`; static snapshot) | [NDW open data](https://opendata.ndw.nu/) `charging_point_locations.geojson.gz` | `prepare/laadpalen.py`: location point -> H3 cell; points and >= 50 kW points | done |
 | 6 | assemble + 0-255 drop-in export (Delta) | — | `assemble.py`: join on `h3_id`, `year_int` | done |
@@ -142,6 +142,7 @@ uv run datacube-zh/release.py --region zh --notes "what changed"
 | 5x | water depth after a cloudburst (`regen_70mm_1h_*`, static) | Klimaateffectatlas 2026, 0.5 m COG tiles (CC BY 4.0) | `prepare/regenwater.py`: full resolution -> 10 m blocks -> hex index raster, resumable | done |
 | 5y | greenness from space (`s2_*`, yearly) + per land cover inside a cell (`datacube_<region>_s2_dekking(_r8/_r7).parquet`) | Copernicus Sentinel-2 L2A via Earth Engine (NDVI composites per year, 10 m) | `prepare/s2_ndvi.py` (export + download), `prepare/s2_metrics.py` (per pixel -> hex), `prepare/s2_cover.py` (split by LGN group of the pixel) | done |
 | 5z | tree canopy cover per AHN epoch (`boomkroon_ahn3/ahn4/ahn5_aandeel`, static, one column per epoch) | Klimaateffectatlas 2026, Rijksmonitor Klimaatadaptatie RMK_BKB_AHN3/4/5, 0.25 m 0/1 masks via WCS (CC BY 4.0) | `prepare/boomkroon.py`: 800 m WCS tiles sampled at 1 m -> 10 m blocks -> hex index raster, resumable; run with `systemd-run --user --unit=datacube-boomkroon -p WorkingDirectory=$PWD -p MemoryMax=4G -p MemorySwapMax=0 /usr/bin/bash -c "exec ~/.local/bin/uv run datacube-zh/prepare/boomkroon.py >> own_data/work_nl/boomkroon.log 2>&1"` (66,489 tiles x 3 epochs, ~0.4 s each, 6 workers: ~4 h) | ready, not run (parked 2026-10-20) |
+| 5aa | climate impacts, static: foundation risk per buurt (`funderingsrisico_*`), grass yield loss from drought / waterlogging (`droogtestress_*`, `zuurstofstress_*`), groundwater GLG + change 2050 (`grondwater_*`), wildfire risk (`natuurbrandrisico_*`), flood probability classes (`overstromingskans_20cm_*`) | Klimaateffectatlas WFS/WCS (CC BY 4.0) | `config/static.toml`; nl: `datacube-zh static --only ...` + `prepare/static_merge.py` | done |
 | 5m | critical deposition values + exceedance (`kdw_*`) | RIVM Koppeltabel relevante habitats (2026) + GDN historical series | `prepare/kdw.py`: AERIUS hexagon centre -> H3 cell | done |
 | 5l | NO2 column from space (`tropomi_*`) per year | KNMI TEMIS monthly TROPOMI NO2 v1.0 (0.125 degree) | `prepare/tropomi.py`: mean of monthly means, 2018 empty | done |
 
@@ -359,24 +360,28 @@ OpenStreetMap history or older RIVM snapshots; `rivm_20240101_…` exists); not 
 
 ## OpenStreetMap lines (`prepare/osm.py`, static)
 
-For the games' moving cars and trains. Ways with `highway=motorway/motorway_link/trunk/trunk_link` or
+For the games' moving cars and trains. Ways with `highway=motorway/trunk/primary/secondary/tertiary` (each with its `_link`) or
 `railway=rail/light_rail/subway/tram` from the latest Geofabrik Netherlands extract (timestamp in the
 files' metadata and the column manifest). Two outputs:
 
 - `datacube_<region>_lijnen.parquet` (copied into every release): one row per OSM way that crosses the
   region, **whole ways, not clipped**, so vehicles can move along them across cells. GeoParquet (WKB,
-  lon/lat) with `osm_id`, `soort` (snelweg, snelweg_afrit, autoweg, autoweg_afrit, spoor, lightrail,
-  metro, tram), `naam`, `ref`, `rijstroken`, `maxsnelheid_kmh`, `eenrichting` (one-way geometry runs in
+  lon/lat) with `osm_id`, `soort` (snelweg, autoweg, provinciaal = primary, regionaal = secondary, lokaal = tertiary,
+  each with `<soort>_afrit` for its links; spoor, lightrail, metro, tram), `naam`, `ref`, `rijstroken`, `maxsnelheid_kmh`, `eenrichting` (one-way geometry runs in
   the direction of travel), `tunnel`, `brug`, `laag`, `geelektrificeerd`, `gebruik`, `dienst` (yard,
   siding, spur), `lengte_m` and `cellen` (the region's res-9 cells it passes through).
 - per cell in the cube (sum at res 8/7): `osm_snelweg_lengte_m`, `osm_autoweg_lengte_m`,
+  `osm_provinciaal_lengte_m`, `osm_regionaal_lengte_m`, `osm_lokaal_lengte_m` (links included),
   `osm_spoor_lengte_m` (through track), `osm_spoor_overig_lengte_m` (`service=*` tracks) and
   `osm_metro_tram_lengte_m`. Exact length inside the hex (line x hex boundary in RD); the per-cell
   lengths add up exactly to the lines clipped to the region. Each carriageway and each track counts
   separately; tunnels and bridges are included (filter on `tunnel` in the line file to hide them).
 
 zh: 15,633 ways; 981 km snelweg, 230 km autoweg, 833 km spoor, 641 km service track, 757 km
-metro/tram. nl: 72,013 ways; 6,964 / 2,377 / 5,695 / 1,956 / 1,196 km. OSM has no history in this
+metro/tram (before 2026-10-20). nl: 72,013 ways; 6,964 / 2,377 / 5,695 / 1,956 / 1,196 km. Since
+2026-10-20 (Unity game request: provincial and local roads were missing, e.g. the N57 over the
+Oosterscheldekering) also primary/secondary/tertiary: nl 322,291 ways (34 MB line file); 6,714 km provinciaal,
+8,829 km regionaal, 19,480 km lokaal. The earlier soort values, ways and length columns are unchanged. OSM has no history in this
 setup, so every cube year carries the same network. Licence: ODbL, credit "© OpenStreetMap contributors".
 
 ## OpenStreetMap grid, solar parks, marinas (`prepare/osm_extra.py`) and NDW charging points (`prepare/laadpalen.py`), static
@@ -559,6 +564,13 @@ gemeenten (2 of ~260: Horst aan de Maas / Peel en Maas, Laren / Eemnes). No lice
   identical maps use EGMS 2019-2023) area-weighted per cell, plus the Deltares forecast of cumulative subsidence
   2020-2050 (100 m, laag/hoog). The Bodemdalingskaart 2.0 itself is not downloadable any more. A full nl `datacube-zh
   static` run no longer fits in 12 GB: aggregate new layers with `--only` and merge them with `prepare/static_merge.py`.
+- **Incremental build** (2026-10-20): when only per-cell static layers changed (static.parquet, osm, wind, ...),
+  `assemble.py --region nl --incremental` reads every year from the latest release and refreshes / inserts just those
+  columns (in the order of a full build), and `coarsen.py --region nl --incremental` aggregates only the added/changed
+  columns listed in `datacube_nl.incremental.json` onto the release's r8/r7 files. Then zh as usual (it is a
+  slice). nl: ~90 s + ~17 s instead of a full rebuild. Checked on its first use (2026.10.20.3): 2018 identical to
+  a full `--year 2018` build (all 511 columns, order and types) and r7 identical to a full coarsen. Yearly layers,
+  CBS, LGN etc. still need a full build.
 - **Data centres**: OSM `telecom=data_center` / `building=data_center` per cell (campus + building outlines merged:
   ~100 sites, 216 ha); RVO's EED reports (104 centres >= 500 kW, data year 2025, IT power for 48, energy for 47 =
   2,380 GWh) per gemeente and year by start year (`datacube_<region>_datacentra.parquet`; closed centres never

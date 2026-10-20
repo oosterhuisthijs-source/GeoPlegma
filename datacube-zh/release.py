@@ -10,7 +10,7 @@ Writes <data>/releases/datacube_<region>/<version>/:
 - datacube_<region>/, .parquet, .columns.json   copies of the assembled cube (read-only files)
 - volledige_tijdreeks_delta/                    (zh) the 0-255 drop-in export
 - datacube_<region>_r8/_r7.parquet + .columns.json   coarser H3 resolutions (coarsen.py), when built
-- datacube_<region>_lijnen.parquet              OSM motorways/railways as whole lines (GeoParquet), when built
+- datacube_<region>_lijnen.parquet              OSM main roads (motorway..tertiary)/railways as whole lines (GeoParquet), when built
 - datacube_<region>_jaar.parquet                national values per year (wind), when built
 - datacube_<region>_knmi_voor.parquet           KNMI per cell for years before the cube (2017), when built
 - datacube_<region>_s2_dekking(_r8/_r7).parquet NDVI per cell, year and LGN group of the pixel, when built

@@ -12,7 +12,7 @@ Writes, under the region's out directory (config/regions.toml):
                                year at a time, so the national table never
                                has to fit in memory.
 - datacube_<region>.columns.json   per-column manifest
-- datacube_<region>_lijnen.parquet  OSM motorways/railways as whole lines (GeoParquet, prepare/osm.py),
+- datacube_<region>_lijnen.parquet  OSM main roads/railways as whole lines (GeoParquet, prepare/osm.py),
                                when prepared; the cube carries their lengths per cell (osm_*_lengte_m)
 - datacube_<region>_s2_dekking.parquet   NDVI per cell, year and LGN group of the pixel (prepare/s2_cover.py),
                                when prepared; coarsen.py adds _r8/_r7
@@ -35,6 +35,11 @@ Writes, under the region's out directory (config/regions.toml):
                                pipeline doesn't produce yet left null
 
 Usage: uv run datacube-zh/assemble.py [--data own_data] [--region zh] [--original PATH]
+       uv run datacube-zh/assemble.py --region nl --incremental [--from PATH]
+         only the per-cell static layers (static, osm, wind, ...) changed: every year is read from the previous cube
+         (default: the latest release), the static columns are refreshed from work/ and new ones inserted where a
+         full build puts them; the yearly layers are not recomputed. Writes <name>.incremental.json (added /
+         changed columns) for `coarsen.py --incremental`. Parent regions only (zh is a slice: run it as usual).
 """
 import argparse
 import fnmatch
@@ -176,6 +181,10 @@ OSM_SOURCE = ("OpenStreetMap (Geofabrik netherlands-latest.osm.pbf, stand {stamp
 OSM_INFO = {
     "osm_snelweg_lengte_m": "lengte snelweg (highway=motorway + motorway_link); elke rijbaan apart",
     "osm_autoweg_lengte_m": "lengte autoweg (highway=trunk + trunk_link); elke rijbaan apart",
+    "osm_provinciaal_lengte_m": "lengte hoofdweg buiten het snelwegnet (highway=primary + primary_link, veelal N-wegen); "
+                                "elke rijbaan apart",
+    "osm_regionaal_lengte_m": "lengte regionale weg (highway=secondary + secondary_link); elke rijbaan apart",
+    "osm_lokaal_lengte_m": "lengte lokale verbindingsweg (highway=tertiary + tertiary_link); elke rijbaan apart",
     "osm_spoor_lengte_m": "lengte spoor (railway=rail zonder service-tag: doorgaand spoor), elk spoor apart",
     "osm_spoor_overig_lengte_m": "lengte emplacement-, opstel- en raccordementsporen (railway=rail met service-tag)",
     "osm_metro_tram_lengte_m": "lengte metro-, lightrail- en tramspoor (railway=subway/light_rail/tram)",
@@ -425,6 +434,42 @@ def build_year(work: Path, year: int, base: pa.Table, lgn: list[str] | None) -> 
     lead = ["h3_id", "year_int"]
     cube = cube.select(lead + [c for c in cube.column_names if c not in lead])
     return cube.sort_by([("h3_id", "ascending")])
+
+
+def incremental_year(prev: Path, year: int, base: pa.Table, report: dict) -> pa.Table:
+    """One year of the cube from the previous cube, with the per-cell static columns (`base`) refreshed.
+
+    A column of `base` that the previous cube lacks goes right after the nearest preceding `base` column it does
+    have (the order of a full build); existing ones are replaced in place and listed in report["changed"] when any
+    value differs."""
+    f = pq.ParquetFile(prev)  # one row group per year in our cubes: read it whole (a row filter costs ~2.5x the memory)
+    yi = f.schema_arrow.get_field_index("year_int")
+    groups = [i for i in range(f.metadata.num_row_groups)
+              if (st := f.metadata.row_group(i).column(yi).statistics) and st.min <= year <= st.max]
+    t = f.read_row_groups(groups)
+    if len(groups) != 1 or t.num_rows != len(base):
+        t = t.filter(pc.equal(t["year_int"], year))
+    b = base.sort_by([("h3_id", "ascending")])
+    if t["h3_id"] != b["h3_id"]:
+        t = t.sort_by([("h3_id", "ascending")])
+    if t["h3_id"] != b["h3_id"]:
+        sys.exit(f"{prev.name} {year}: other cells than work/grid.parquet; run a full assemble")
+    order = list(t.column_names)
+    for i, c in enumerate(b.column_names):
+        if c == "h3_id":
+            continue
+        col = b[c]
+        if c in order:
+            col = pc.cast(col, t.schema.field(c).type)
+            if not col.equals(t[c]):
+                report["changed"].add(c)
+            t = t.set_column(t.schema.get_field_index(c), c, col)
+        else:
+            report["added"].add(c)
+            before = next((x for x in reversed(b.column_names[:i]) if x in order), "year_int")
+            order.insert(order.index(before) + 1, c)
+            t = t.append_column(c, col)
+    return t.select(order)
 
 
 def scale_0_255(col: pa.ChunkedArray) -> pa.ChunkedArray:
@@ -748,6 +793,9 @@ def main():
     ap.add_argument("--original", default=DEFAULT_ORIGINAL, help="original Delta table (for the zh compat schema)")
     ap.add_argument("--year", type=int, choices=YEARS, help="build only this year into datacube_<region>_<year>.parquet "
                     "(+ .columns.json); the full cube is left alone")
+    ap.add_argument("--incremental", action="store_true", help="refresh only the static layers (see the doc string)")
+    ap.add_argument("--from", dest="prev", default=None, help="previous cube for --incremental "
+                    "(default <data>/releases/datacube_<region>/latest/datacube_<region>.parquet)")
     args = ap.parse_args()
     regs = tomllib.loads((Path(__file__).parent / "config/regions.toml").read_text())
     reg = regs[args.region]
@@ -758,7 +806,11 @@ def main():
     global REGION_LABEL
     REGION_LABEL = reg["name"]
     if reg.get("slice_of"):
+        if args.incremental:
+            sys.exit(f"--incremental is for parent regions; {args.region} is a slice of {reg['slice_of']}: run it as usual")
         return main_slice(args, reg, regs[reg["slice_of"]], data, work, out, name)
+    prev = Path(args.prev) if args.prev else data / f"releases/{name}/latest/{name}.parquet"
+    report = {"added": set(), "changed": set()}
 
     grid = pq.read_table(work / "grid.parquet")
     base = left_join(left_join(grid, pq.read_table(work / "layers/admin.parquet"), "h3_id"),
@@ -789,8 +841,12 @@ def main():
     if delta_path.exists():
         shutil.rmtree(delta_path)
     schema, shares, writer = None, {}, None
+    if args.incremental:
+        if prev.resolve().parent == out.resolve():
+            sys.exit(f"--from {prev} is the cube this run overwrites; use a release")
+        log(f"incremental: years from {prev.resolve()}, static layers from {work}")
     for year in YEARS:
-        t = build_year(work, year, base, lgn)
+        t = incremental_year(prev, year, base, report) if args.incremental else build_year(work, year, base, lgn)
         if schema is None:
             schema = t.schema
             writer = pq.ParquetWriter(out / f"{name}.parquet", schema, compression="zstd")
@@ -805,7 +861,7 @@ def main():
 
     if (work / "layers/osm_lijnen.parquet").exists():
         shutil.copy2(work / "layers/osm_lijnen.parquet", out / f"{name}_lijnen.parquet")
-        log(f"wrote {out / f'{name}_lijnen.parquet'} (OSM motorways and railways, whole lines)")
+        log(f"wrote {out / f'{name}_lijnen.parquet'} (OSM main roads and railways, whole lines)")
     if (work / "layers/waterkeringen_lijnen.parquet").exists():
         shutil.copy2(work / "layers/waterkeringen_lijnen.parquet", out / f"{name}_waterkeringen.parquet")
         log(f"wrote {out / f'{name}_waterkeringen.parquet'} (primary flood defences, whole lines)")
@@ -829,6 +885,13 @@ def main():
     manifest = build_manifest(schema, shares, Path(__file__).parent / "config")
     (out / f"{name}.columns.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
     log(f"wrote {out / f'{name}.columns.json'} ({len(manifest)} columns)")
+    inc = out / f"{name}.incremental.json"
+    if args.incremental:
+        info = {"from": str(prev.resolve()), "added": sorted(report["added"]), "changed": sorted(report["changed"])}
+        inc.write_text(json.dumps(info, indent=1))
+        log(f"incremental: {len(info['added'])} columns added, {len(info['changed'])} changed: {info['changed']}")
+    elif inc.exists():
+        inc.unlink()  # a full build: coarsen.py --incremental must not trust an old report
 
     if args.region == "zh":
         write_compat(out, name, args.original)

@@ -380,6 +380,27 @@ reference_period = "forecast of cumulative subsidence 2020-2050 (laag / hoog sce
 time = "static"
 
 [[rule]]
+columns = ["funderingsrisico_*"]
+tier = "modelled"
+native_resolution = "per CBS buurt (Deltares/KCAF, Klimaateffectatlas)"
+reference_period = "current climate and 2050 (laag / hoog scenario)"
+time = "static"
+
+[[rule]]
+columns = ["droogtestress_*", "zuurstofstress_*", "grondwater_*", "natuurbrandrisico_*"]
+tier = "modelled"
+native_resolution = "250 m grid (Klimaateffectatlas)"
+reference_period = "current climate and 2050 (KNMI'23 scenarios)"
+time = "static"
+
+[[rule]]
+columns = ["overstromingskans_*"]
+tier = "modelled"
+native_resolution = "5 m grid (LIWO, Klimaateffectatlas 2025-11-20), fetched at the region's minimum raster resolution"
+reference_period = "current defences, defences at the legal norm in 2050, and 2100 with climate change"
+time = "static"
+
+[[rule]]
 columns = ["bodembeweging_*"]
 tier = "measured"
 native_resolution = "InSAR, ~100 m hexagons (Klimaateffectatlas), only where there are reflectors"

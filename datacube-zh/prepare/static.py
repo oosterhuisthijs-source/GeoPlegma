@@ -80,7 +80,7 @@ def prepare_raster(layer, src_dir, out_dir):
     axes, native = describe(layer["wcs"], layer["coverage"])
     res = max(layer.get("resolution", native), MIN_RES, native)
     scale = native / res
-    tile_m = MAX_TILE_PX * res
+    tile_m = layer.get("tile_m", MAX_TILE_PX * res)  # servers with a read limit on source pixels need smaller tiles
     xmin, ymin, xmax, ymax = BBOX_RD
     tiles = []
     tile_dir = src_dir / name

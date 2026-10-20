@@ -13,6 +13,7 @@
 #                 For flood depth "no data" means "does not flood", i.e. 0.
 #   valid_max   = values above this are source errors: skipped, NOT filled (a hex with only such pixels is null)
 #   resolution  = fetch resolution in metres (omit: native)
+#   tile_m      = WCS tile size in metres (omit: 4000 output pixels); for servers that limit the source read
 #   Hexes that contain no pixel centre (rasters coarser than ~300m) take the
 #   value of the pixel under the hex centre instead.
 #
@@ -335,3 +336,190 @@ agg = "numeric"
 outputs = [
   { column = "snelheid", agg = "area_weighted_average", name = "bodembeweging_ondiep_mm_jaar", unit = "mm/jaar" },
 ]
+
+# --- Climate impacts (Klimaateffectatlas, CC BY 4.0), added 2026-10-20 ---------------------------------------------
+# Static model maps, "huidig" = current climate, 2050/2100 = KNMI'23 scenarios (laag = mild, hoog = strong). Units and
+# classes from the map legends (WMS GetLegendGraphic).
+
+# Foundations: share of buildings (%) in the buurt at high risk of pile rot (wooden piles that fall dry) or of uneven
+# settling (shallow foundations), per buurt polygon (13,416 buurten), Deltares/KCAF via KEA.
+[[vector]]
+name = "funderingsrisico_paalrot_huidig"
+description = "Risico paalrot, huidig klimaat: % panden in de buurt met hoog risico (Klimaateffectatlas risicopaalrot_huidig)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:risicopaalrot_huidig"]
+agg = "numeric"
+outputs = [{ column = "no_cc_risi", agg = "area_weighted_average", name = "funderingsrisico_paalrot_huidig_pct", unit = "% panden" }]
+
+[[vector]]
+name = "funderingsrisico_paalrot_2050laag"
+description = "Risico paalrot 2050, mild scenario: % panden in de buurt met hoog risico (Klimaateffectatlas risicopaalrot_2050laag)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:risicopaalrot_2050laag"]
+agg = "numeric"
+outputs = [{ column = "mild_cc__1", agg = "area_weighted_average", name = "funderingsrisico_paalrot_2050_laag_pct", unit = "% panden" }]
+
+[[vector]]
+name = "funderingsrisico_paalrot_2050hoog"
+description = "Risico paalrot 2050, hoog scenario: % panden in de buurt met hoog risico (Klimaateffectatlas risicopaalrot_2050hoog)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:risicopaalrot_2050hoog"]
+agg = "numeric"
+outputs = [{ column = "sterke_c_2", agg = "area_weighted_average", name = "funderingsrisico_paalrot_2050_hoog_pct", unit = "% panden" }]
+
+[[vector]]
+name = "funderingsrisico_verschilzetting_2050laag"
+description = "Risico verschilzetting 2050, mild scenario: % panden in de buurt met hoog risico (Klimaateffectatlas risicoverschilzetting_2050laag)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:risicoverschilzetting_2050laag"]
+agg = "numeric"
+outputs = [{ column = "mild_cc_ri", agg = "area_weighted_average", name = "funderingsrisico_verschilzetting_2050_laag_pct", unit = "% panden" }]
+
+[[vector]]
+name = "funderingsrisico_verschilzetting_2050hoog"
+description = "Risico verschilzetting 2050, hoog scenario: % panden in de buurt met hoog risico (Klimaateffectatlas risicoverschilzetting_2050hoog)"
+wfs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+layers = ["kea_public:risicoverschilzetting_2050hoog"]
+agg = "numeric"
+outputs = [{ column = "sterke_c_1", agg = "area_weighted_average", name = "funderingsrisico_verschilzetting_2050_hoog_pct", unit = "% panden" }]
+
+# Crops: yearly yield loss of grass (%) from drought and from waterlogging (oxygen stress), 250 m grid.
+[[raster]]
+name = "droogtestress_huidig_pct"
+description = "Droogtestress: jaarlijkse opbrengstderving gras (%), huidig klimaat, 250 m (Klimaateffectatlas)"
+unit = "% opbrengstderving"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__droogtestress_huidig"
+agg = "mean"
+nodata = [2147483647]
+valid_max = 100
+
+[[raster]]
+name = "droogtestress_2050_hoog_pct"
+description = "Droogtestress: jaarlijkse opbrengstderving gras (%), 2050 hoog scenario, 250 m (Klimaateffectatlas)"
+unit = "% opbrengstderving"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__droogtestress_2050hoog"
+agg = "mean"
+nodata = [2147483647]
+valid_max = 100
+
+[[raster]]
+name = "zuurstofstress_huidig_pct"
+description = "Zuurstofstress (te nat): jaarlijkse opbrengstderving gras (%), huidig klimaat, 250 m (Klimaateffectatlas)"
+unit = "% opbrengstderving"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__zuurstofstress_huidig"
+agg = "mean"
+nodata = [2147483647]
+valid_max = 100
+
+[[raster]]
+name = "zuurstofstress_2050_hoog_pct"
+description = "Zuurstofstress (te nat): jaarlijkse opbrengstderving gras (%), 2050 hoog scenario, 250 m (Klimaateffectatlas)"
+unit = "% opbrengstderving"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__zuurstofstress_2050hoog"
+agg = "mean"
+nodata = [2147483647]
+valid_max = 100
+
+# Groundwater (NHI model, 250 m): GLG = mean lowest groundwater level in m below the surface; the extreme-dry-year
+# level likewise; the 2050 maps are the CHANGE of the GLG in m (negative = lower groundwater, legend "daling").
+[[raster]]
+name = "grondwater_glg_huidig_m_mv"
+description = "Gemiddeld laagste grondwaterstand (GLG), m onder maaiveld, huidig klimaat, 250 m (Klimaateffectatlas)"
+unit = "m onder maaiveld"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__GLG_Huidig"
+agg = "mean"
+nodata = [-3.4028234663852886e38]
+
+[[raster]]
+name = "grondwater_lg_extreem_droog_huidig_m_mv"
+description = "Laagste grondwaterstand in een extreem droog jaar, m onder maaiveld, huidig klimaat, 250 m (Klimaateffectatlas)"
+unit = "m onder maaiveld"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__LG_extreemdroogjaar_Huidig"
+agg = "mean"
+nodata = [-3.4028234663852886e38]
+
+[[raster]]
+name = "grondwater_glg_verandering_2050_laag_m"
+description = "Verandering GLG tot 2050, mild scenario (m; negatief = lagere grondwaterstand), 250 m (Klimaateffectatlas)"
+unit = "m"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__GLG_2050Laag"
+agg = "mean"
+nodata = [-3.4028234663852886e38]
+
+[[raster]]
+name = "grondwater_glg_verandering_2050_hoog_m"
+description = "Verandering GLG tot 2050, hoog scenario (m; negatief = lagere grondwaterstand), 250 m (Klimaateffectatlas)"
+unit = "m"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__GLG_2050Hoog"
+agg = "mean"
+nodata = [-3.4028234663852886e38]
+
+# Wildfire risk class 1 laag / 2 middel / 3 hoog (250 m, nodata where there is no vegetation that can burn).
+[[raster]]
+name = "natuurbrandrisico_huidig"
+description = "Natuurbrandrisico, huidig klimaat: klasse 1 laag, 2 middel, 3 hoog (meest voorkomend in de hex), 250 m (Klimaateffectatlas)"
+unit = "klasse 1-3"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__natuurbrandrisico_huidig"
+agg = "mode"
+nodata = [-9999]
+
+[[raster]]
+name = "natuurbrandrisico_2050_hoog"
+description = "Natuurbrandrisico 2050, hoog scenario: klasse 1 laag, 2 middel, 3 hoog (meest voorkomend in de hex), 250 m (Klimaateffectatlas)"
+unit = "klasse 1-3"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+coverage = "kea_public__natuurbrandrisico_2050hoog"
+agg = "mode"
+nodata = [-9999]
+
+# Flood probability per location (LIWO/WBI, 5 m, fetched at the region's minimum resolution): chance per year of more
+# than 20 cm of water, class 0 = not floodable, 1 < 1/30,000, 2 1/3,000-1/30,000, 3 1/300-1/3,000, 4 1/30-1/300,
+# 5 > 1/30. Huidig = today's defences; norm 2050 = defences at the legal norm in 2050; 2100 = norm + climate change.
+[[raster]]
+name = "overstromingskans_20cm_huidig_klasse"
+description = "Plaatsgebonden overstromingskans > 20 cm, huidig: klasse 0-5 (hoger = vaker), meest voorkomend in de hex (Klimaateffectatlas 20251120)"
+unit = "klasse 0-5"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+tile_m = 15000  # KEA refuses reads over ~98 MB of source (5 m pixels)
+coverage = "kea_public__plaatsgebonden_overstromingskans_huidig_20_cm_20251120"
+agg = "mode"
+nodata = [-9999]
+
+[[raster]]
+name = "overstromingskans_20cm_huidig_max_klasse"
+description = "Plaatsgebonden overstromingskans > 20 cm, huidig: hoogste klasse 0-5 in de hex (Klimaateffectatlas 20251120)"
+unit = "klasse 0-5"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+tile_m = 15000  # KEA refuses reads over ~98 MB of source (5 m pixels)
+coverage = "kea_public__plaatsgebonden_overstromingskans_huidig_20_cm_20251120"
+agg = "max"
+nodata = [-9999]
+
+[[raster]]
+name = "overstromingskans_20cm_norm_2050_klasse"
+description = "Plaatsgebonden overstromingskans > 20 cm bij dijken op norm in 2050: klasse 0-5, meest voorkomend in de hex (Klimaateffectatlas 20251120)"
+unit = "klasse 0-5"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+tile_m = 15000  # KEA refuses reads over ~98 MB of source (5 m pixels)
+coverage = "kea_public__plaatsgebonden_overstromingskans_norm_2050_20_cm_20251120"
+agg = "mode"
+nodata = [-9999]
+
+[[raster]]
+name = "overstromingskans_20cm_2100_klasse"
+description = "Plaatsgebonden overstromingskans > 20 cm in 2100 (norm + klimaatverandering): klasse 0-5, meest voorkomend in de hex (Klimaateffectatlas 20251120)"
+unit = "klasse 0-5"
+wcs = "https://cas.cloud.sogelink.com/public/data/org/gws/YWFMLMWERURF/kea_public/ows"
+tile_m = 15000  # KEA refuses reads over ~98 MB of source (5 m pixels)
+coverage = "kea_public__plaatsgebonden_overstromingskans_norm_plus_klimaatverandering_2100_20_cm_20251120"
+agg = "mode"
+nodata = [-9999]

@@ -30,7 +30,10 @@ has the children that are in the grid. `n_children` (of 7 / 49) and `covered_are
 
 Writes <out>/datacube_<region>_r<res>.parquet (+ .columns.json with the rule per column).
 
-Usage: uv run datacube-zh/coarsen.py [--data own_data] [--region zh] [--res 8 7]
+Usage: uv run datacube-zh/coarsen.py [--data own_data] [--region zh] [--res 8 7] [--incremental]
+  --incremental: after `assemble.py --incremental`, aggregate only the columns its <name>.incremental.json lists
+  (added / changed) and join them onto the previous cube's coarse files (next to the cube it started from); every
+  other column is taken over unchanged.
 """
 import argparse
 import json
@@ -105,6 +108,8 @@ def rule_for(name: str, meta: dict) -> tuple[str, str | None]:
         return STATIC_RULES[name], None
     if name.startswith("regen_") and "_max_" in name:
         return "max", None
+    if name.startswith(("natuurbrandrisico_", "overstromingskans_")):  # classes (Klimaateffectatlas)
+        return ("max", None) if "_max_" in name else ("mode", None)
     if name.startswith(("vee_", "nh3_")):
         return "sum", None
     if name in ("kdw_habitat_m2", "kdw_overschreden_m2"):
@@ -188,10 +193,10 @@ def build_sql(columns: dict, src: str) -> tuple[str, dict]:
         FROM {src} WHERE {c} IS NOT NULL GROUP BY parent, year_int, {c})
   GROUP BY parent, year_int)""")
             joins.append((alias, [name] + comp))
+    sel = ["count(*) AS n_children", "sum(hex_area_m2) AS covered_area_m2",
+           "sum(hex_area_m2 * province_fraction) AS _inside_m2"] + sel
     base = f"""base AS (
-  SELECT parent, year_int, count(*) AS n_children, sum(hex_area_m2) AS covered_area_m2,
-         sum(hex_area_m2 * province_fraction) AS _inside_m2,
-         {', '.join(sel)}
+  SELECT parent, year_int, {', '.join(sel)}
   FROM {src} GROUP BY parent, year_int)"""
     out_cols = ["base.*"] + [f"{a}.{q(c)}" for a, cs in joins for c in cs]
     join_sql = "".join(f" LEFT JOIN {a} USING (parent, year_int)" for a, _ in joins)
@@ -206,6 +211,7 @@ def main():
     ap.add_argument("--region", default="zh")
     ap.add_argument("--res", type=int, nargs="*", default=[8, 7])
     ap.add_argument("--memory", default="8GB", help="DuckDB memory limit (spills to disk beyond it)")
+    ap.add_argument("--incremental", action="store_true", help="only the columns of <name>.incremental.json")
     args = ap.parse_args()
 
     reg = tomllib.loads((HERE / "config/regions.toml").read_text())[args.region]
@@ -213,6 +219,19 @@ def main():
     name = f"datacube_{args.region}"
     cube = out / f"{name}.parquet"
     columns = json.loads((out / f"{name}.columns.json").read_text())
+    todo, prev_dir = None, None
+    if args.incremental:
+        inc = out / f"{name}.incremental.json"
+        if not inc.exists():
+            sys.exit(f"missing {inc}: run assemble.py --incremental first (or coarsen without --incremental)")
+        info = json.loads(inc.read_text())
+        todo = info["added"] + info["changed"]
+        prev_dir = Path(info["from"]).parent
+        companions = {c for cs in COMPANIONS.values() for c in cs}
+        if companions & set(todo):
+            sys.exit(f"changed companion column(s) {sorted(companions & set(todo))}: run a full coarsen")
+        todo += [c for k in todo if k in COMPANIONS for c in COMPANIONS[k] if c not in todo]
+        log(f"incremental: {len(todo)} columns, the rest from {prev_dir}")
 
     con = duckdb.connect()
     con.execute(f"SET memory_limit = '{args.memory}'")
@@ -225,7 +244,9 @@ def main():
         parents = [h3.cell_to_parent(h, res) for h in ids]
         con.register("pmap", pa.table({"h3_id": ids, "parent": parents}))
         con.execute(f"CREATE OR REPLACE TEMP VIEW src AS SELECT c.*, p.parent FROM '{cube}' c JOIN pmap p USING (h3_id)")
-        sql, rules = build_sql(columns, "src")
+        sql, rules = build_sql(columns if todo is None else {c: columns[c] for c in todo}, "src")
+        if todo is not None:
+            _, rules = build_sql(columns, "src")  # the rule of every column, for the manifest (SQL not run)
         uniq = sorted(set(parents))
         geo = pa.table({
             "parent": uniq,
@@ -239,6 +260,17 @@ def main():
                            least(a._inside_m2 / g.hex_area_m2, 1.0) AS province_fraction,
                            a.n_children, a.covered_area_m2, {', '.join('a.' + q(c) for c in order)}
                     FROM ({sql}) a JOIN geo g USING (parent) ORDER BY h3_id, year_int"""
+        if todo is not None:
+            old = prev_dir / f"{name}_r{res}.parquet"
+            have = {r[0] for r in con.sql(f"DESCRIBE SELECT * FROM '{old}'").fetchall()}
+            missing = [c for c in order if c not in have and c not in todo]
+            if missing:
+                sys.exit(f"{old} lacks {missing[:5]}...: run a full coarsen")
+            pick = ", ".join(("a." if c in todo else "p.") + q(c) for c in order)
+            final = f"""SELECT p.h3_id, p.year_int, p.lat, p.lon, p.hex_area_m2, p.province_fraction, p.n_children,
+                               p.covered_area_m2, {pick}
+                        FROM '{old}' p JOIN ({sql}) a ON a.parent = p.h3_id AND a.year_int = p.year_int
+                        ORDER BY h3_id, year_int"""
         dest = out / f"{name}_r{res}.parquet"
         con.execute(f"COPY ({final}) TO '{dest}' (FORMAT parquet, COMPRESSION zstd)")
         n, k = con.sql(f"SELECT count(*), count(DISTINCT h3_id) FROM '{dest}'").fetchone()

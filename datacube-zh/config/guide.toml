@@ -127,12 +127,12 @@ trend = "no"
 note = "RIVM turbine register, snapshot January 2026, repeated in every year (no construction year in the source): turbines built after 2018 also appear in the early years. Distance counts turbines of any country, on land and at sea, from the cell centre."
 
 [[concept]]
-name = "Motorways and railways (OpenStreetMap)"
+name = "Main roads and railways (OpenStreetMap)"
 use = ["osm_snelweg_lengte_m", "osm_spoor_lengte_m", "osm_metro_tram_lengte_m"]
-alternatives = ["osm_autoweg_lengte_m", "osm_spoor_overig_lengte_m"]
-covers = ["osm_snelweg_*", "osm_autoweg_*", "osm_spoor_*", "osm_metro_tram_*"]
+alternatives = ["osm_autoweg_lengte_m", "osm_provinciaal_lengte_m", "osm_regionaal_lengte_m", "osm_lokaal_lengte_m", "osm_spoor_overig_lengte_m"]
+covers = ["osm_snelweg_*", "osm_autoweg_*", "osm_provinciaal_*", "osm_regionaal_*", "osm_lokaal_*", "osm_spoor_*", "osm_metro_tram_*"]
 trend = "no"
-note = "Latest OSM extract repeated in every year (no history). Metres of line inside the cell; every carriageway and every track counts separately, tunnels included. The lines themselves (whole, with lanes, speed, one-way direction, tunnel/bridge) are in datacube_<region>_lijnen.parquet. Credit: © OpenStreetMap contributors (ODbL)."
+note = "Latest OSM extract repeated in every year (no history). Metres of line inside the cell (provinciaal / regionaal / lokaal = OSM highway=primary / secondary / tertiary, since 2026-10-20; residential streets are not included); every carriageway and every track counts separately, tunnels included. The lines themselves (whole, with lanes, speed, one-way direction, tunnel/bridge) are in datacube_<region>_lijnen.parquet. Credit: © OpenStreetMap contributors (ODbL)."
 
 [[concept]]
 name = "Heat, green, water storage, flooding, ground level"
@@ -163,6 +163,30 @@ alternatives = ["bodembeweging_min_mm_jaar", "bodembeweging_ondiep_mm_jaar", "bo
 covers = ["bodembeweging_*", "bodemdaling_*"]
 trend = "no"
 note = "Static. bodembeweging_* = measured InSAR ground motion in mm/year (negative = sinking), area-weighted over the Klimaateffectatlas hexagons in the cell; only where InSAR has reflectors (buildings, roads), so meadows and peat land are mostly empty; ondiep = the shallow part (soil compaction, peat oxidation) rather than deep causes (gas, salt). KEA does not state the InSAR source or period (likely EGMS 2019-2023). bodemdaling_2020_2050_* = Deltares forecast of cumulative subsidence by 2050 in m (laag/hoog scenario, 100 m grid), the peat polders of Holland and Friesland up to ~0.5 m."
+
+[[concept]]
+name = "Foundation risk: pile rot and uneven settling (Klimaateffectatlas)"
+use = ["funderingsrisico_paalrot_huidig_pct", "funderingsrisico_paalrot_2050_hoog_pct"]
+alternatives = ["funderingsrisico_paalrot_2050_laag_pct", "funderingsrisico_verschilzetting_2050_laag_pct", "funderingsrisico_verschilzetting_2050_hoog_pct"]
+covers = ["funderingsrisico_*"]
+trend = "no"
+note = "Static model, one value per CBS buurt (area-weighted onto the cell): % of the buurt's buildings at high risk of pile rot (wooden piles that fall dry when groundwater drops) or of uneven settling (shallow foundations on soft soil). Huidig = current climate, 2050 laag/hoog = mild/strong scenario; no current-climate map exists for uneven settling. Map classes: pile rot <0.8 very low, 0.8-3 low, 3-6 moderate, 6-15 high, >15 very high. Credit: Klimaateffectatlas (CC BY 4.0)."
+
+[[concept]]
+name = "Crop stress and groundwater, now and 2050 (Klimaateffectatlas)"
+use = ["droogtestress_huidig_pct", "grondwater_glg_huidig_m_mv"]
+alternatives = ["droogtestress_2050_hoog_pct", "zuurstofstress_huidig_pct", "zuurstofstress_2050_hoog_pct", "grondwater_lg_extreem_droog_huidig_m_mv", "grondwater_glg_verandering_2050_laag_m", "grondwater_glg_verandering_2050_hoog_m"]
+covers = ["droogtestress_*", "zuurstofstress_*", "grondwater_*"]
+trend = "no"
+note = "Static model maps on a 250 m grid (coarser than a res-9 cell: most cells take the value of the pixel at their centre). droogtestress/zuurstofstress = yearly yield loss of grass in % from drought / from waterlogging (null in built-up areas; map classes: drought <10 low, 10-20 moderate, >20 high; waterlogging <15, 15-40, >40). grondwater_glg_huidig_m_mv = mean lowest groundwater level in m below the surface (tens of metres under the Veluwe; negative = above the surface in the model, e.g. water and wet polders); _lg_extreem_droog_ = the level in an extreme dry year; grondwater_glg_verandering_2050_* = CHANGE of that level by 2050 in m, negative = lower groundwater (sign as in the map legend; the high sandy grounds such as the Veluwe rise by 1-2 m in both scenarios through wetter winters). A model, not the BRO measurements. Credit: Klimaateffectatlas (CC BY 4.0)."
+
+[[concept]]
+name = "Wildfire risk and flood probability (Klimaateffectatlas)"
+use = ["natuurbrandrisico_huidig", "overstromingskans_20cm_huidig_klasse"]
+alternatives = ["natuurbrandrisico_2050_hoog", "overstromingskans_20cm_huidig_max_klasse", "overstromingskans_20cm_norm_2050_klasse", "overstromingskans_20cm_2100_klasse"]
+covers = ["natuurbrandrisico_*", "overstromingskans_*"]
+trend = "no"
+note = "Static classes. natuurbrandrisico_* = wildfire risk 1 low, 2 medium, 3 high (250 m; null where nothing can burn), most common in the cell. overstromingskans_20cm_* = chance per year of more than 20 cm of water from dykes, rivers or sea: 0 = no class (the source legend has no 0: not floodable or not computed, e.g. parts of central Amsterdam; read 0 as 'unknown or very small', not as 'safe'), 1 <1/30,000, 2 1/3,000-1/30,000, 3 1/300-1/3,000, 4 1/30-1/300, 5 >1/30; _klasse = most common in the cell, _max_klasse = highest; huidig = today's defences, norm_2050 = all defences at their legal norm in 2050, 2100 = norm plus climate change. Same family as flooddepth_* (LIWO water depths). Res 8/7: most common (max for _max_). Credit: Klimaateffectatlas (CC BY 4.0)."
 
 [[concept]]
 name = "Electricity grid congestion (Netbeheer Nederland)"

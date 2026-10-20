@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["osmium>=4", "shapely>=2", "pyproj>=3.6", "h3>=4", "pyarrow>=17", "numpy"]
 # ///
-"""OpenStreetMap motorways and railways -> a line file for the games + per-hex lengths for the cube.
+"""OpenStreetMap main roads and railways -> a line file for the games + per-hex lengths for the cube.
 
 Source: Geofabrik `netherlands-latest.osm.pbf` (downloaded by hand to <data>/sources/osm/, shared by
 all regions; only the latest version is used, its timestamp is recorded). Ways with one of the tags
@@ -49,6 +49,9 @@ SAMPLE_M = 10  # spacing of the points that find a line's candidate cells (+ the
 KINDS = {
     ("highway", "motorway"): "snelweg", ("highway", "motorway_link"): "snelweg_afrit",
     ("highway", "trunk"): "autoweg", ("highway", "trunk_link"): "autoweg_afrit",
+    ("highway", "primary"): "provinciaal", ("highway", "primary_link"): "provinciaal_afrit",
+    ("highway", "secondary"): "regionaal", ("highway", "secondary_link"): "regionaal_afrit",
+    ("highway", "tertiary"): "lokaal", ("highway", "tertiary_link"): "lokaal_afrit",
     ("railway", "rail"): "spoor", ("railway", "light_rail"): "lightrail",
     ("railway", "subway"): "metro", ("railway", "tram"): "tram",
 }
@@ -56,6 +59,9 @@ KINDS = {
 LENGTH_COLUMNS = {
     "osm_snelweg_lengte_m": ["snelweg", "snelweg_afrit"],
     "osm_autoweg_lengte_m": ["autoweg", "autoweg_afrit"],
+    "osm_provinciaal_lengte_m": ["provinciaal", "provinciaal_afrit"],
+    "osm_regionaal_lengte_m": ["regionaal", "regionaal_afrit"],
+    "osm_lokaal_lengte_m": ["lokaal", "lokaal_afrit"],
     "osm_spoor_lengte_m": ["spoor"],
     "osm_spoor_overig_lengte_m": ["spoor_dienst"],
     "osm_metro_tram_lengte_m": ["lightrail", "metro", "tram"],
