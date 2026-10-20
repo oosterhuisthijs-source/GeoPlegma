@@ -203,7 +203,12 @@ written yet). Announce each release in all three handoff files: `GAME_SESSION.md
 log `own_data/sources_check.log`, desktop notification on NEW. .20: (Sentinel-2 NDVI `s2_*` + `knmi_neerslagtekort_31aug_mm`; side files `_s2_dekking` (NDVI per LGN group of the pixel,
 `prepare/s2_cover.py`, res 9/8/7) and `_knmi_voor` (KNMI 2017; Rd1 misses South Limburg on 30 July 2017 -> null);
 validation in datacube-zh README "Sentinel-2 NDVI"; no 2025/Sentinel-2C break). Open from the sim: April-May NDVI band
-(Earth Engine quota). Before: .18.4 (sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
+(Earth Engine quota). Parked by the user 2026-10-20 (ready, not run): tree canopy per AHN epoch, `prepare/boomkroon.py`
+(Klimaateffectatlas RMK_BKB_AHN3/4/5 via WCS, run command in README row 5z, ~4 h). After the run: wire
+`layers/boomkroon.parquet` into assemble (static), provenance (AHN3 2014-2019 / AHN4 2020-2022 / AHN5 2023-2025,
+AHN5 partial -> null), guide (trend care: AHN3 found less crown in test windows, partly point density), coarsen
+(area-weighted mean), validate vs `s2_groen_aandeel` and LGN forest; optional side table per buurt from WFS
+`RMK_BuurtAggregaties` (canopy + shade + 3-30-300 per epoch, -9995 = no data). Before: .18.4 (sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
 `osm_datacentrum_*` + `_datacentra`, `net_*` + `_netgebieden` + `_netcongestie`; side files listed in release.py
 `SIDE_FILES`). Monthly user timer `datacube-netcongestie.timer` archives the congestion CSVs. nl `datacube-zh static`
 no longer fits 12 GB: use `--only` + `prepare/static_merge.py`. Open: electricity per gemeente by sector (CBS 82538NED
