@@ -35,7 +35,8 @@ along the coast, takes the nearest cell with data within 3 km):
   knmi_neerslagtekort_31aug_mm  the same cumulative deficit on 31 August (end of the NDVI summer window)
 Years before 2018 (--years 2017-2025) go to <work>/layers/knmi_voor.parquet, a side file: last summer's
 deficit for the cube's first year.
-A year with missing days gets null for the indicators of that variable (logged).
+A year with missing days gets null for the indicators of that variable (logged); so does a grid cell missing on
+any day of the year (only Rd1 2017: 1,393 cells, mostly a block on 30 July).
 
 Usage: uv run datacube-zh/prepare/knmi.py download [--data own_data] [--years 2017-2025]
        uv run datacube-zh/prepare/knmi.py [--data own_data] [--region zh] [--years 2017-2025]
@@ -251,8 +252,10 @@ def main():
             deficit = np.cumsum(st["ev"][d0:d1] - st["rd"][d0:d1], axis=0)
             grids["knmi_neerslagtekort_max_mm"] = deficit.max(axis=0)
             grids["knmi_neerslagtekort_31aug_mm"] = deficit[(dt.date(year, 8, 31) - dt.date(year, 4, 1)).days]
-        # counts and nansums turn a cell without data into 0: set those back to NaN before sampling
-        nodata = {v: np.isnan(a).all(axis=0) for v, a in st.items() if a is not None}
+        # counts and nansums turn a cell without data into 0: set those back to NaN before sampling. A cell with
+        # data on some days but not all (Rd1 2017: single cells on ~29 days, a 1,390 km2 block on 30 July) would
+        # get a silently low sum: null too
+        nodata = {v: np.isnan(a).any(axis=0) for v, a in st.items() if a is not None}
         for c, g in grids.items():
             g[np.logical_or.reduce([nodata[v] for v in SOURCES[c]])] = np.nan
         for c in COLUMNS:
