@@ -198,15 +198,17 @@ consumer contracts listed in `datacube-zh/config/consumers.toml` (see README "Re
 releases; the game session bumps its pin. Consumers (each with its own contract): `simzh-deckgl` (zh) and
 `simcityzh-unity` (zh + nl), plus `cube-sim` (zh + nl, contract in place) and `cube-analyst` (nl, contract file not
 written yet). Announce each release in all three handoff files: `GAME_SESSION.md`, `ANALYST_SESSION.md`,
-`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.18.4, `datacube_nl` 2026.10.18.4
-(sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
+`SIM_SESSION.md` (the sim, `~/cube-sim`). Current releases: `datacube_zh` 2026.10.20, `datacube_nl` 2026.10.20
+(Sentinel-2 NDVI `s2_*` + `knmi_neerslagtekort_31aug_mm`; side files `_s2_dekking` (NDVI per LGN group of the pixel,
+`prepare/s2_cover.py`, res 9/8/7) and `_knmi_voor` (KNMI 2017; Rd1 misses South Limburg on 30 July 2017 -> null);
+validation in datacube-zh README "Sentinel-2 NDVI"; no 2025/Sentinel-2C break). Open from the sim: April-May NDVI band
+(Earth Engine quota). Before: .18.4 (sim requests: `wk_*` flood defences, `bodembeweging_*`/`bodemdaling_*` subsidence, `regen_70mm_1h_*` cloudburst,
 `osm_datacentrum_*` + `_datacentra`, `net_*` + `_netgebieden` + `_netcongestie`; side files listed in release.py
 `SIDE_FILES`). Monthly user timer `datacube-netcongestie.timer` archives the congestion CSVs. nl `datacube-zh static`
 no longer fits 12 GB: use `--only` + `prepare/static_merge.py`. Open: electricity per gemeente by sector (CBS 82538NED
 offline 2026-10-18 / Klimaatmonitor API key); other cloudburst scenarios on request; rebuild CBS 2025 when v2 appears.
 Before: .18.3 (COA capacity per gemeente/snapshot, `prepare/coa.py`); .18.2 (permit-holder housing, `prepare/vergunninghouders.py`). Before: zh/nl 2026.10.18 (static raster units, `waterberging` = mm; sharper CBS 2025
-v1 break note: suppressed squares add 0). Open: NDVI (`s2`) wiring
-+ release once Earth Engine delivers 2022-2025 (method validated on 2018-2021 after the LGN water-mask fix);
+v1 break note: suppressed squares add 0). Open:
 upwind index parked (sim v4: no signal); Lbv buy-outs per gemeente (sim, low priority); % aardgaswoningen (2024
 buurt map only, offered); analyst contract file missing. Before: zh .17.8 / nl .17.7 (RIVM deposition 2025 = provisional
 break; gdn series has a fixed spatial emission pattern). Before: zh .17.7 / nl .17.6 (national wind per year as
@@ -239,7 +241,7 @@ Never edit the game repos from here:
   own CLAUDE.md has the layout. `~/Downloads/SimCityZH v0.95/` is gone (only a `MOVED.md` stub).
 - `~/ruimtelijke-assistent` — LLM spatial assistant reading `volledige_tijdreeks_delta` (the 0-255 compat export).
 
-### Night 2026-10-16/17: running unattended (pick up here)
+### Night 2026-10-16/17: running unattended (DONE: NDVI released 2026-10-20 as zh/nl 2026.10.20)
 
 - `datacube-ndvi-watch.service` (systemd user unit): waits for the 8 Earth Engine NDVI exports
   (`prepare/s2_ndvi.py`, tasks in `own_data/sources/s2_ndvi/tasks.json`, output gs://som-scenario/datacube/ndvi/),
@@ -256,8 +258,8 @@ Never edit the game repos from here:
   datacube-zh/prepare/s2_ndvi.py watch >> own_data/sources/s2_ndvi/watch.log 2>&1"`.
   `s2_metrics.py` was run on 2018-2021 and validated (ad hoc): water now from LGN (the NDVI-only rule counted the
   Wadden Sea and lakes as never-green land); never-green vs 3D BAG footprint r 0.53, vs groenklasse -0.58;
-  greenhouses sit in between (say so in the column text). The watcher still runs `s2_metrics.py` when all 8 are in. The NL assemble already peaks at ~12.4 GB under the 12 GB cap: raise the cap a bit
-  or trim assemble memory before adding `s2`.
+  greenhouses sit in between (say so in the column text). Since 2026-10-20 `assemble.py` reads yearly layers one year at a time, so the NL assemble has
+  room again (it ran under the 12 GB cap with `s2`).
 - KNMI: download complete (2018-2025, all 5 variables), released in zh .17.3 / nl .17.2.
 - Earth Engine auth = gcloud Application Default Credentials (quota project som-scenario); the old
   `~/.config/earthengine/credentials` (expired token) was moved to `credentials.old`.
