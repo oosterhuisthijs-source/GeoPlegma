@@ -347,6 +347,11 @@ MEASURE_WARNINGS = {
     "man_nh3": ("meting, maar weinig punten: een gebiedswaarde is het gemiddelde van 1-15 punten, toegekend aan het "
                 "hele gebied; de punten staan waar RIVM meet (vaak aan de rand naar landbouwgrond). Vergelijk met "
                 "gcn_nh3_ug_m3 (model, gekalibreerd op deze metingen)"),
+    "wb_perc_aardgas": ("alleen 2024 (Wijk- en Buurtkaart 2024): CBS bepaalt elektrische verwarming sinds 2024 uit het "
+                        "maandelijkse stroomverbruik, dus geen reeks; andere jaren leeg. Aardgaswoning = hoofdzakelijk "
+                        "verwarmd met cv of blokverwarming op gas; aardgasvrij = geen gaslevering (elektrisch of "
+                        "stadswarmte). Door afronding en onderdrukking tellen ze niet op tot 100 (gemiddeld ~92). Buurten "
+                        "met < 100 woningen onderdrukt: dan de waarde van de wijk, anders de gemeente (zie _eigen_buurt)"),
     "s2_": ("NDVI uit Sentinel-2: kassen, zonneparken en kale akkers (vroeg geoogst, braak) tellen als niet groen; "
             "een wolkenrijk jaar (zie s2_helder_*) geeft een lagere piek. Geen landgebruikskaart: vergelijk met lgn_* "
             "of bag3d_*"),

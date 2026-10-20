@@ -69,6 +69,9 @@ wb_perc_bouwjaar_vanaf_2000 = ["percentage_bouwjaarklasse_vanaf_2000"]
 wb_perc_woningen_stadsverwarming = ["percentage_woningen_met_stadsverwarming"]
 wb_gemiddeld_gasverbruik = ["gemiddeld_aardgasverbruik", "gemiddeld_gasverbruik_totaal"]
 wb_gemiddeld_elektriciteitsverbruik = ["gemiddelde_elektriciteitslevering", "gemiddeld_elektriciteitsverbruik_totaal"]
+# Only in the 2024 kaart: CBS developed the method (electric heating from monthly electricity use) in 2024
+wb_perc_aardgaswoningen = ["percentage_aardgaswoningen"]
+wb_perc_aardgasvrije_woningen = ["percentage_aardgasvrije_woningen"]
 # Mobility and urbanity
 wb_personenautos_per_huishouden = ["personenautos_per_huishouden"]
 wb_omgevingsadressendichtheid = ["omgevingsadressendichtheid"]
@@ -79,8 +82,10 @@ wb_bevolkingsdichtheid = ["bevolkingsdichtheid_inwoners_per_km2"]
 # (mostly large ones; 2018: 82%); wijken ~52%, gemeenten all. A buurt without its own value takes its
 # wijk's, else its gemeente's (prepare/wb.py). `<column>_eigen_buurt` = 1 where the buurt's own value is
 # used, 0 where it was filled from wijk/gemeente: averaged per cell = share of the cell with a buurt value.
+# Same for the gas-heating shares (2024 only): CBS suppresses buurten with < 100 homes (~30%, mostly rural).
 [fallback]
-columns = ["wb_gemiddeld_inkomen_per_inwoner", "wb_gemiddeld_inkomen_per_inkomensontvanger", "wb_gestandaardiseerd_inkomen_huishoudens"]
+columns = ["wb_gemiddeld_inkomen_per_inwoner", "wb_gemiddeld_inkomen_per_inkomensontvanger", "wb_gestandaardiseerd_inkomen_huishoudens",
+           "wb_perc_aardgaswoningen", "wb_perc_aardgasvrije_woningen"]
 
 [aggregation]
 area_weighted_average = [
@@ -123,6 +128,10 @@ area_weighted_average = [
   "wb_perc_woningen_stadsverwarming",
   "wb_gemiddeld_gasverbruik",
   "wb_gemiddeld_elektriciteitsverbruik",
+  "wb_perc_aardgaswoningen",
+  "wb_perc_aardgaswoningen_eigen_buurt",
+  "wb_perc_aardgasvrije_woningen",
+  "wb_perc_aardgasvrije_woningen_eigen_buurt",
   "wb_personenautos_per_huishouden",
   "wb_omgevingsadressendichtheid",
   "wb_stedelijkheid",

@@ -32,6 +32,14 @@ trend = "care"
 note = "CBS squares; construction-period classes add up to aantal_woningen_sum (suppressed classes filled in, bijgeschat_bouwjaar_sum). CBS changed the construction-period classes in 2025 (15_en_later is summed back from 15_tot_25 + 25_en_later). Gas and electricity use are not published in 2025 (empty)."
 
 [[concept]]
+name = "Gas-heated and gas-free homes (2024 only)"
+use = ["wb_perc_aardgaswoningen", "wb_perc_aardgasvrije_woningen"]
+alternatives = ["wb_perc_aardgaswoningen_eigen_buurt", "wb_perc_aardgasvrije_woningen_eigen_buurt", "wb_perc_woningen_stadsverwarming"]
+covers = ["wb_perc_aardgas*"]
+trend = "no"
+note = "CBS Kerncijfers wijken en buurten 2024, per buurt: % homes heated mainly by an individual or block gas boiler (no electric or district heating found) and % homes without gas delivery (electric and/or district heat). Only the 2024 kaart has them: CBS built the method (electric heating from monthly electricity use) in 2024, so there is no series; other years are empty. Rounding and suppression mean the two don't add to 100 (mean ~92). Buurten with < 100 homes (~30%, mostly rural) are suppressed and take their wijk's value, else the gemeente's (_eigen_buurt = share of the cell with the buurt's own value; ~half the land area). Gas-free share vs wb_perc_woningen_stadsverwarming: r 0.78."
+
+[[concept]]
 name = "House value"
 use = ["gemiddelde_woz_waarde_woning_area_weighted_average"]
 alternatives = ["wb_gemiddelde_woningwaarde"]
